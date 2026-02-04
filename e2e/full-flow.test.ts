@@ -26,7 +26,7 @@ import {
   bytesToHex,
 } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
-import { localhost } from 'viem/chains';
+import { hardhat } from 'viem/chains';
 import { gcm } from '@noble/ciphers/aes';
 import { randomBytes } from '@noble/ciphers/webcrypto';
 
@@ -127,7 +127,7 @@ describe('E2E: Full Payment Flow', () => {
   const ESCROW_ADDRESS = process.env.ESCROW_CONTRACT_ADDRESS as `0x${string}` | undefined;
 
   const publicClient = createPublicClient({
-    chain: localhost,
+    chain: hardhat,
     transport: http('http://127.0.0.1:8545'),
   });
 
@@ -136,13 +136,13 @@ describe('E2E: Full Payment Flow', () => {
 
   const agentWallet = createWalletClient({
     account: agentAccount,
-    chain: localhost,
+    chain: hardhat,
     transport: http('http://127.0.0.1:8545'),
   });
 
   const providerWallet = createWalletClient({
     account: providerAccount,
-    chain: localhost,
+    chain: hardhat,
     transport: http('http://127.0.0.1:8545'),
   });
 
