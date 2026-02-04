@@ -1,5 +1,7 @@
 import { Router } from 'express';
-import { createPublicClient, http, keccak256, toHex, hexToBytes, bytesToHex } from 'viem';
+import { createPublicClient, createWalletClient, http, keccak256, toHex, hexToBytes, bytesToHex } from 'viem';
+import { privateKeyToAccount } from 'viem/accounts';
+import { hardhat } from 'viem/chains';
 import { gcm } from '@noble/ciphers/aes';
 import { randomBytes } from '@noble/ciphers/webcrypto';
 import { processStringLength } from '../services/string-length';
@@ -8,6 +10,7 @@ export interface ProviderConfig {
   escrowAddress: `0x${string}`;
   rpcUrl: string;
   providerAddress: `0x${string}`;
+  providerPrivateKey: `0x${string}`;
   pricePerCall?: string;
   deadlineSeconds?: number;
 }
@@ -41,6 +44,16 @@ const EscrowABI = [
       },
     ],
     stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [
+      { name: 'requestId', type: 'bytes32' },
+      { name: 'preimage', type: 'bytes32' },
+    ],
+    name: 'claim',
+    outputs: [],
+    stateMutability: 'nonpayable',
     type: 'function',
   },
 ] as const;
@@ -142,11 +155,41 @@ export function invokeRouter(config: ProviderConfig): Router {
       // Encrypt the result with the preimage as key
       const ciphertext = encrypt(JSON.stringify(result), challenge.preimage);
 
-      // Return encrypted result (preimage will be revealed when provider claims)
-      return res.json({
+      // Return encrypted result first
+      res.json({
         ciphertext,
         requestId,
       });
+
+      // Auto-claim after successful response (async, non-blocking)
+      setImmediate(async () => {
+        try {
+          const account = privateKeyToAccount(config.providerPrivateKey);
+          const walletClient = createWalletClient({
+            account,
+            chain: hardhat,
+            transport: http(config.rpcUrl),
+          });
+
+          const claimHash = await walletClient.writeContract({
+            address: config.escrowAddress,
+            abi: EscrowABI,
+            functionName: 'claim',
+            args: [requestId as `0x${string}`, challenge.preimage],
+          });
+
+          console.log(`Auto-claimed payment for ${requestId.slice(0, 10)}...`);
+          console.log(`  Transaction: ${claimHash}`);
+          console.log(`  Preimage revealed: ${challenge.preimage.slice(0, 20)}...`);
+
+          // Clean up
+          pendingChallenges.delete(payment.hashLock);
+        } catch (error) {
+          console.error(`Failed to auto-claim for ${requestId}:`, error);
+        }
+      });
+
+      return;
     } catch (error) {
       return res.status(400).json({
         error: 'Failed to verify payment',

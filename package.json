@@ -6,15 +6,18 @@
     "build": "turbo run build",
     "test": "turbo run test",
     "lint": "turbo run lint",
-    "clean": "turbo run clean && rm -rf node_modules"
+    "clean": "turbo run clean && rm -rf node_modules",
+    "demo": "tsx scripts/demo-flow.ts",
+    "demo:api": "tsx scripts/demo-api-flow.ts"
   },
   "devDependencies": {
-    "turbo": "^2.3.0",
-    "typescript": "^5.3.3",
-    "prettier": "^3.2.4",
     "@typescript-eslint/eslint-plugin": "^6.19.1",
     "@typescript-eslint/parser": "^6.19.1",
-    "eslint": "^8.56.0"
+    "eslint": "^8.56.0",
+    "prettier": "^3.2.4",
+    "tsx": "^4.7.0",
+    "turbo": "^2.3.0",
+    "typescript": "^5.3.3"
   },
   "packageManager": "pnpm@8.14.0",
   "engines": {
