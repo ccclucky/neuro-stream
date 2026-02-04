@@ -1,0 +1,11 @@
+{
+  "name": "@neurostream/backend",
+  "version": "0.0.1",
+  "private": true,
+  "scripts": {
+    "db:migrate": "supabase db push",
+    "db:reset": "supabase db reset",
+    "functions:serve": "supabase functions serve",
+    "functions:deploy": "supabase functions deploy"
+  }
+}
