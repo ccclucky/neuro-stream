@@ -1,0 +1,16 @@
+{
+  "name": "@neurostream/e2e",
+  "version": "0.0.1",
+  "private": true,
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.5",
+    "typescript": "^5.3.3",
+    "vitest": "^1.2.2",
+    "viem": "^2.7.0",
+    "@noble/ciphers": "^0.5.1"
+  }
+}
