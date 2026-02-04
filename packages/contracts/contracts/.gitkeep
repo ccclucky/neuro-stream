@@ -1,4 +1,0 @@
-// SPDX-License-Identifier: MIT
-pragma solidity ^0.8.24;
-
-// Placeholder for Escrow contract - will be implemented with TDD
