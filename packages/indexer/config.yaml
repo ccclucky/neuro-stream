@@ -1,0 +1,18 @@
+# NeuroStream Envio Indexer Configuration
+# See https://docs.envio.dev for more information
+
+name: neurostream-indexer
+description: Indexes Escrow contract events for NeuroStream
+
+networks:
+  - id: 1  # Update with Monad chain ID when deployed
+    start_block: 0
+    contracts:
+      - name: Escrow
+        address:
+          - ${ESCROW_CONTRACT_ADDRESS}
+        handler: src/EventHandlers.ts
+        events:
+          - event: PaymentLocked(bytes32 indexed requestId, address indexed agent, address indexed provider, uint256 amount, bytes32 hashLock, uint64 deadline)
+          - event: PaymentReleased(bytes32 indexed requestId, address indexed provider, uint256 amount, bytes32 preimage)
+          - event: PaymentRefunded(bytes32 indexed requestId, address indexed agent, uint256 amount)
