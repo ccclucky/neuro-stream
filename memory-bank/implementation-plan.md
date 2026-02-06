@@ -11,7 +11,7 @@
 |------|------|------|
 | 链 | Monad Testnet | 需配置 RPC/Faucet |
 | 合约 | Hardhat + Solidity | Escrow.sol |
-| 索引 | Envio HyperIndex | 索引链上事件 |
+| 索引 | viem + Supabase 轮询索引器 | 索引链上事件至 PostgreSQL |
 | 后端 | Supabase | Edge Functions + PostgreSQL |
 | 前端 | Next.js + Wagmi + Viem + shadcn/ui | 3个页面 |
 | 身份/钱包 | Privy | Provider email 登录 + 嵌入式钱包 |
@@ -115,9 +115,6 @@ SUPABASE_SERVICE_KEY=
 # Provider Service
 PROVIDER_PORT=3001
 
-# Envio
-ENVIO_API_URL=
-
 # Privy
 PRIVY_APP_ID=
 PRIVY_APP_SECRET=
@@ -129,7 +126,6 @@ NEXT_PUBLIC_MONAD_RPC_URL=
 NEXT_PUBLIC_ESCROW_CONTRACT_ADDRESS=
 NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_ANON_KEY=
-NEXT_PUBLIC_ENVIO_GRAPHQL_URL=
 NEXT_PUBLIC_PRIVY_APP_ID=
 ```
 
@@ -298,22 +294,22 @@ const result = await client.invokeService(services[0].id, {
 
 ---
 
-### 阶段 5：Envio 索引器
-**目标**：索引链上事件，提供 GraphQL 查询
+### 阶段 5：viem + Supabase 索引器
+**目标**：索引链上事件至 Supabase PostgreSQL
 
-- [ ] `packages/indexer/` 初始化
-- [ ] `config.yaml` 配置（从 `.env` 读取合约地址和 RPC）
-- [ ] 定义 schema：Payment 实体
-- [ ] 事件处理器：PaymentLocked → 创建记录、PaymentReleased → 更新、PaymentRefunded → 更新
+- [x] `packages/indexer/` 重写为 viem + Supabase 轮询索引器
+- [x] Supabase migration: `payments` + `indexer_state` 表
+- [x] `src/indexer.ts` — 核心轮询逻辑
+- [x] `test/indexer.test.ts` — 7 个单元测试
+- [x] 清除所有 ENVIO 环境变量引用
 
-**验证**：触发合约事件后，GraphQL 可查询到数据
+**验证**：触发合约事件后，Supabase `payments` 表可查询到数据
 
 **关键文件**：
-- `packages/indexer/config.yaml`
-- `packages/indexer/src/EventHandlers.ts`
-- `packages/indexer/schema.graphql`
-
-**Commit**: `feat(indexer): add Envio indexer for Escrow events`
+- `apps/backend/supabase/migrations/002_payments.sql`
+- `packages/indexer/src/indexer.ts`
+- `packages/indexer/src/abi.ts`
+- `packages/indexer/test/indexer.test.ts`
 
 ---
 
@@ -464,7 +460,7 @@ const result = await client.invokeService(services[0].id, {
 3. **阶段 2**：Escrow 合约（TDD）
 4. **阶段 3**：SDK（TDD，依赖合约 ABI）
 5. **阶段 4**：Provider（TDD，可与阶段 3 部分并行）
-6. **阶段 5**：Envio 索引器（依赖合约地址）
+6. **阶段 5**：viem + Supabase 索引器（依赖合约地址）
 7. **阶段 6**：Supabase 后端
 8. **阶段 7**：前端（依赖 SDK + 后端）
 9. **阶段 8**：集成测试
@@ -476,7 +472,7 @@ const result = await client.invokeService(services[0].id, {
 | 风险 | 缓解措施 |
 |------|----------|
 | Monad Testnet 不稳定 | 备选 Hardhat 本地网络进行开发和测试 |
-| Envio 配置复杂 | 先跳过，用直接查询合约替代 |
+| Envio 配置复杂 | 已替换为 viem + Supabase 轮询索引器，零新基础设施 |
 | 加密实现出错 | 使用成熟的 crypto 库（如 @noble/ciphers） |
 
 ---
@@ -493,7 +489,6 @@ const result = await client.invokeService(services[0].id, {
 - `PRIVY_APP_ID` — Privy 应用 ID（在 privy.io 控制台创建）
 - `PRIVY_APP_SECRET` — Privy 应用 Secret（Server SDK 用）
 - `ESCROW_CONTRACT_ADDRESS` — 合约部署后填入
-- `ENVIO_API_URL` — Envio 部署后填入
 
 ### Agent 开发者的 `.env`（本地 AI 程序）
 Agent 开发者在本地 AI 程序中配置：

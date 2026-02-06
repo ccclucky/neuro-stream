@@ -2,19 +2,28 @@
   "name": "neurostream",
   "private": true,
   "scripts": {
-    "dev": "turbo run dev",
-    "build": "turbo run build",
-    "test": "turbo run test",
+    "dev": "dotenv -c development -- turbo run dev",
+    "build": "dotenv -c production -- turbo run build",
+    "test": "dotenv -c development -- turbo run test",
     "lint": "turbo run lint",
     "clean": "turbo run clean && rm -rf node_modules",
-    "demo": "tsx scripts/demo-flow.ts",
-    "demo:api": "tsx scripts/demo-api-flow.ts"
+    "demo": "dotenv -c development -- tsx scripts/demo-flow.ts",
+    "demo:api": "dotenv -c development -- tsx scripts/demo-api-flow.ts",
+    "db:migrate": "dotenv -c development -- tsx scripts/db-migrate.ts",
+    "supabase:login": "supabase login",
+    "supabase:link": "supabase link --project-ref uppsdjgmgfwbknbzvhby",
+    "supabase:deploy": "supabase functions deploy --project-ref uppsdjgmgfwbknbzvhby --workdir apps/backend",
+    "supabase:deploy:services": "supabase functions deploy services --project-ref uppsdjgmgfwbknbzvhby --workdir apps/backend",
+    "supabase:deploy:metrics": "supabase functions deploy metrics --project-ref uppsdjgmgfwbknbzvhby --workdir apps/backend"
   },
   "devDependencies": {
     "@typescript-eslint/eslint-plugin": "^6.19.1",
     "@typescript-eslint/parser": "^6.19.1",
+    "dotenv-cli": "^11.0.0",
     "eslint": "^8.56.0",
+    "postgres": "^3.4.8",
     "prettier": "^3.2.4",
+    "supabase": "^2.75.5",
     "tsx": "^4.7.0",
     "turbo": "^2.3.0",
     "typescript": "^5.3.3"

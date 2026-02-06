@@ -8,7 +8,9 @@
 - Contracts: 18/18 ✅
 - SDK: 23/23 ✅
 - Provider: 5/5 ✅
-- **总计: 46 测试全部通过**
+- Indexer: 7/7 ✅
+- E2E: 1/1 ✅
+- **总计: 54 测试全部通过**
 
 ---
 
@@ -77,18 +79,24 @@
 - `apps/provider/src/services/string-length.ts` — 示例服务
 - `apps/provider/test/api.test.ts` — 5 个测试
 
-## 阶段 5：Envio 索引器 ✅
-- [x] `packages/indexer/` 初始化
-- [x] `config.yaml` 配置
-- [x] `schema.graphql` — Payment 实体
-- [x] `EventHandlers.ts` — PaymentLocked/Released/Refunded 处理器
-- **注意**: 需要 Envio CLI 运行 codegen 和 start
-- **Commit**: `bcbfdca feat(indexer): add Envio HyperIndex skeleton for Escrow events`
+## 阶段 5：viem + Supabase 索引器 ✅
+- [x] `packages/indexer/` 重写为 viem + Supabase 轮询索引器
+- [x] Supabase migration: `payments` + `indexer_state` 表
+- [x] `src/indexer.ts` — 核心轮询逻辑（`createIndexer` 工厂函数）
+- [x] `src/abi.ts` — Escrow 事件 ABI
+- [x] `src/types.ts` — 类型定义
+- [x] `src/index.ts` — 入口，读取环境变量，启动轮询
+- [x] `test/indexer.test.ts` — 7 个单元测试（mock viem + Supabase）
+- [x] 删除 Envio 相关文件（config.yaml, schema.graphql, EventHandlers.ts, generated/）
+- [x] 清除所有 ENVIO 环境变量引用
+- **7 测试全部通过**
 
 ### 关键文件
-- `packages/indexer/config.yaml`
-- `packages/indexer/schema.graphql`
-- `packages/indexer/src/EventHandlers.ts`
+- `apps/backend/supabase/migrations/002_payments.sql` — payments + indexer_state 表
+- `packages/indexer/src/indexer.ts` — 核心轮询逻辑
+- `packages/indexer/src/abi.ts` — Escrow 事件 ABI
+- `packages/indexer/src/types.ts` — 类型定义
+- `packages/indexer/test/indexer.test.ts` — 7 个测试
 
 ## 阶段 6：Supabase 后端 + 质量评分系统 ✅
 - [x] 数据库 Schema — providers, services, call_logs, metrics 表

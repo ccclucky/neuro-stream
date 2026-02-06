@@ -6,6 +6,7 @@
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { verifyMessage } from 'https://esm.sh/viem@2.7.0';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -73,6 +74,37 @@ serve(async (req) => {
     // POST /services - Register new service
     if (req.method === 'POST') {
       const body = await req.json();
+
+      // Signature verification
+      const { signature, message: signedMessage, walletAddress: rawAddress } = body;
+      if (!signature || !signedMessage || !rawAddress) {
+        return new Response(
+          JSON.stringify({ error: 'Missing signature, message, or walletAddress' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      // Verify the message follows expected format
+      if (!signedMessage.startsWith('NeuroStream: Register service ')) {
+        return new Response(
+          JSON.stringify({ error: 'Invalid message format' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      // Verify signature matches wallet address
+      const isValid = await verifyMessage({
+        address: rawAddress as `0x${string}`,
+        message: signedMessage,
+        signature: signature as `0x${string}`,
+      });
+
+      if (!isValid) {
+        return new Response(
+          JSON.stringify({ error: 'Invalid signature — wallet ownership not proven' }),
+          { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
 
       const { data: provider, error: providerError } = await supabase
         .from('providers')

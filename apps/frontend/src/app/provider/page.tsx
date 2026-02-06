@@ -1,12 +1,49 @@
 'use client';
 
-import { usePrivy, useWallets } from '@privy-io/react-auth';
-import { useState } from 'react';
+import { usePrivy, useSignMessage, useWallets } from '@privy-io/react-auth';
+import { useCallback, useEffect, useState } from 'react';
+import { isSupabaseConfigured, supabaseFetch } from '@/lib/supabase';
+import { useEmbeddedWallet } from '@/lib/useEmbeddedWallet';
+import { Deposit } from '@/components/deposit';
+
+interface Service {
+  id: string;
+  service_id: string;
+  service_type: string;
+  endpoint: string;
+  pricing_amount: string;
+  pricing_asset: string;
+  status: string;
+  created_at: string;
+}
+
+interface Payment {
+  request_id: string;
+  agent: string;
+  provider: string;
+  amount: string;
+  status: 'Locked' | 'Released' | 'Refunded';
+  deadline: number;
+  created_at: string;
+}
+
+function weiToEth(wei: string): string {
+  const num = BigInt(wei);
+  const eth = Number(num) / 1e18;
+  return eth.toFixed(6);
+}
+
+function shortenHex(hex: string, chars = 6): string {
+  return `${hex.slice(0, chars + 2)}...${hex.slice(-chars)}`;
+}
 
 export default function ProviderPage() {
   const { login, authenticated, user } = usePrivy();
   const { wallets } = useWallets();
+  const { signMessage } = useSignMessage();
+  const { embeddedAddress } = useEmbeddedWallet();
   const [showRegisterForm, setShowRegisterForm] = useState(false);
+  const [registerLoading, setRegisterLoading] = useState(false);
   const [formData, setFormData] = useState({
     serviceId: '',
     serviceType: 'utility',
@@ -14,22 +51,81 @@ export default function ProviderPage() {
     pricingAmount: '0.001',
   });
 
+  const [myServices, setMyServices] = useState<Service[]>([]);
+  const [pendingClaims, setPendingClaims] = useState<Payment[]>([]);
+  const [totalEarned, setTotalEarned] = useState('0');
+  const [totalCalls, setTotalCalls] = useState(0);
+  const [dataLoading, setDataLoading] = useState(false);
+
   const embeddedWallet = wallets.find((w) => w.walletClientType === 'privy');
   const walletAddress = embeddedWallet?.address || user?.wallet?.address;
+
+  const fetchProviderData = useCallback(async () => {
+    if (!walletAddress || !isSupabaseConfigured) return;
+
+    setDataLoading(true);
+    const addrLower = walletAddress.toLowerCase();
+
+    try {
+      const [services, pending, released] = await Promise.all([
+        supabaseFetch<Service[]>(
+          `services?select=*&recipient=ilike.${walletAddress}&status=eq.active&order=created_at.desc`
+        ),
+        supabaseFetch<Payment[]>(
+          `payments?select=*&provider=eq.${addrLower}&status=eq.Locked&order=created_at.desc`
+        ),
+        supabaseFetch<Pick<Payment, 'amount'>[]>(
+          `payments?select=amount&provider=eq.${addrLower}&status=eq.Released`
+        ),
+      ]);
+
+      setMyServices(services);
+      setPendingClaims(pending);
+
+      // Aggregate revenue
+      let sum = BigInt(0);
+      for (const r of released) {
+        sum += BigInt(r.amount);
+      }
+      const eth = Number(sum) / 1e18;
+      setTotalEarned(eth.toFixed(6));
+      setTotalCalls(released.length);
+    } catch {
+      // silently fail — sections show empty/zero
+    } finally {
+      setDataLoading(false);
+    }
+  }, [walletAddress]);
+
+  useEffect(() => {
+    fetchProviderData();
+  }, [fetchProviderData]);
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-    if (!supabaseUrl || !supabaseKey) {
-      alert('Demo mode: Service registration would be saved to Supabase');
-      setShowRegisterForm(false);
+    if (!isSupabaseConfigured) {
+      alert('Supabase is not configured. Cannot register service.');
       return;
     }
 
+    if (!embeddedWallet) {
+      alert('Embedded wallet not found. Please wait for wallet initialization.');
+      return;
+    }
+
+    setRegisterLoading(true);
+
     try {
+      // 1. Construct and sign the verification message
+      const timestamp = Math.floor(Date.now() / 1000);
+      const message = `NeuroStream: Register service ${formData.serviceId} at ${timestamp}`;
+      const signature = await signMessage(message, undefined, embeddedWallet.address);
+
+      // 2. Send registration with signature
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+      const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+
       const res = await fetch(`${supabaseUrl}/functions/v1/services`, {
         method: 'POST',
         headers: {
@@ -38,7 +134,9 @@ export default function ProviderPage() {
           Authorization: `Bearer ${supabaseKey}`,
         },
         body: JSON.stringify({
-          walletAddress,
+          walletAddress: embeddedWallet.address,
+          signature,
+          message,
           providerName: user?.email?.address || 'Anonymous',
           email: user?.email?.address,
           serviceId: formData.serviceId,
@@ -49,11 +147,18 @@ export default function ProviderPage() {
         }),
       });
 
-      if (!res.ok) throw new Error('Failed to register service');
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || 'Failed to register service');
+      }
+
       alert('Service registered successfully!');
       setShowRegisterForm(false);
+      fetchProviderData();
     } catch (err) {
       alert('Error registering service: ' + (err instanceof Error ? err.message : 'Unknown'));
+    } finally {
+      setRegisterLoading(false);
     }
   };
 
@@ -91,13 +196,17 @@ export default function ProviderPage() {
         </div>
       </div>
 
-      {/* Gas Deposit Prompt */}
-      <div className="bg-blue-50 rounded-xl border border-blue-200 p-6 mb-6">
-        <h2 className="text-lg font-semibold text-blue-800 mb-2">Fund Gas for Claims</h2>
-        <p className="text-blue-700 text-sm">
-          Send a small amount of ETH (Monad Testnet) to your wallet. You need gas to call claim() and receive payments.
-        </p>
-      </div>
+      {/* Deposit */}
+      {embeddedAddress ? (
+        <Deposit embeddedAddress={embeddedAddress} />
+      ) : (
+        <div className="bg-yellow-50 rounded-xl border border-yellow-200 p-6 mb-6">
+          <h2 className="text-lg font-semibold text-yellow-800 mb-2">Creating Embedded Wallet...</h2>
+          <p className="text-yellow-700 text-sm">
+            Setting up your platform wallet. This only happens once.
+          </p>
+        </div>
+      )}
 
       {/* Register Service */}
       <div className="bg-white rounded-xl shadow-sm border p-6 mb-6">
@@ -172,9 +281,10 @@ export default function ProviderPage() {
 
             <button
               type="submit"
-              className="w-full bg-green-600 hover:bg-green-700 text-white py-2 rounded-lg font-medium"
+              disabled={registerLoading}
+              className="w-full bg-green-600 hover:bg-green-700 disabled:bg-green-400 text-white py-2 rounded-lg font-medium"
             >
-              Register Service
+              {registerLoading ? 'Signing & Registering...' : 'Register Service'}
             </button>
           </form>
         )}
@@ -183,17 +293,69 @@ export default function ProviderPage() {
       {/* My Services */}
       <div className="bg-white rounded-xl shadow-sm border p-6 mb-6">
         <h2 className="text-lg font-semibold text-gray-900 mb-4">My Services</h2>
-        <p className="text-gray-400 text-sm text-center py-4">
-          No services registered yet. Click "Register Service" to get started.
-        </p>
+        {dataLoading ? (
+          <div className="flex justify-center py-4">
+            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-indigo-600"></div>
+          </div>
+        ) : myServices.length === 0 ? (
+          <p className="text-gray-400 text-sm text-center py-4">
+            No services registered yet. Click &quot;Register Service&quot; to get started.
+          </p>
+        ) : (
+          <div className="space-y-3">
+            {myServices.map((s) => (
+              <div key={s.id} className="border rounded-lg p-4 flex justify-between items-center">
+                <div>
+                  <div className="font-medium text-gray-900">{s.service_id}</div>
+                  <div className="text-sm text-gray-500">
+                    {s.service_type} | {s.endpoint}
+                  </div>
+                </div>
+                <div className="text-right">
+                  <div className="text-sm font-medium text-indigo-600">
+                    {s.pricing_amount} {s.pricing_asset}
+                  </div>
+                  <div className="text-xs text-gray-400">per call</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Pending Claims */}
       <div className="bg-white rounded-xl shadow-sm border p-6 mb-6">
         <h2 className="text-lg font-semibold text-gray-900 mb-4">Pending Claims</h2>
-        <p className="text-gray-400 text-sm text-center py-4">
-          No pending claims. Payments will appear here when Agents lock funds for your services.
-        </p>
+        {dataLoading ? (
+          <div className="flex justify-center py-4">
+            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-indigo-600"></div>
+          </div>
+        ) : pendingClaims.length === 0 ? (
+          <p className="text-gray-400 text-sm text-center py-4">
+            No pending claims. Payments will appear here when Agents lock funds for your services.
+          </p>
+        ) : (
+          <div className="space-y-3">
+            {pendingClaims.map((p) => (
+              <div key={p.request_id} className="border rounded-lg p-4 flex justify-between items-center">
+                <div>
+                  <div className="font-mono text-xs text-gray-700">{shortenHex(p.request_id)}</div>
+                  <div className="text-sm text-gray-500">
+                    From: {shortenHex(p.agent)}
+                  </div>
+                </div>
+                <div className="text-right">
+                  <div className="text-sm font-medium text-yellow-700">
+                    {weiToEth(p.amount)} ETH
+                  </div>
+                  <div className="text-xs text-gray-400">
+                    Deadline: {new Date(Number(p.deadline) * 1000).toLocaleString()}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Revenue Stats */}
@@ -201,11 +363,11 @@ export default function ProviderPage() {
         <h2 className="text-lg font-semibold text-gray-900 mb-4">Revenue Statistics</h2>
         <div className="grid grid-cols-2 gap-4">
           <div className="bg-gray-50 rounded-lg p-4 text-center">
-            <div className="text-2xl font-bold text-gray-900">0 ETH</div>
+            <div className="text-2xl font-bold text-gray-900">{totalEarned} ETH</div>
             <div className="text-sm text-gray-500">Total Earned</div>
           </div>
           <div className="bg-gray-50 rounded-lg p-4 text-center">
-            <div className="text-2xl font-bold text-gray-900">0</div>
+            <div className="text-2xl font-bold text-gray-900">{totalCalls}</div>
             <div className="text-sm text-gray-500">Total Calls Served</div>
           </div>
         </div>

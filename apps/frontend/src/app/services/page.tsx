@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { isSupabaseConfigured, supabaseFetch } from '@/lib/supabase';
 
 interface ServiceMetrics {
   id: string;
@@ -25,58 +26,16 @@ export default function ServicesPage() {
 
   useEffect(() => {
     async function fetchServices() {
+      if (!isSupabaseConfigured) {
+        setError('Supabase is not configured. Please set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY.');
+        setLoading(false);
+        return;
+      }
+
       try {
-        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-        const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-        if (!supabaseUrl || !supabaseKey) {
-          // Use mock data for demo
-          setServices([
-            {
-              id: '1',
-              service_id: 'string-length',
-              service_type: 'utility',
-              endpoint: 'http://localhost:3001/invoke',
-              pricing_amount: '0.001',
-              pricing_asset: 'ETH',
-              recipient: '0x70997970C51812dc3A010C7d01b50e0d17dc79C8',
-              quality_score: 0.92,
-              success_rate: 0.98,
-              avg_latency: 150,
-              schema_match_rate: 0.95,
-              total_calls: 1234,
-            },
-            {
-              id: '2',
-              service_id: 'text-summarize',
-              service_type: 'ai',
-              endpoint: 'http://localhost:3002/invoke',
-              pricing_amount: '0.005',
-              pricing_asset: 'ETH',
-              recipient: '0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC',
-              quality_score: 0.85,
-              success_rate: 0.90,
-              avg_latency: 450,
-              schema_match_rate: 0.88,
-              total_calls: 567,
-            },
-          ]);
-          setLoading(false);
-          return;
-        }
-
-        const res = await fetch(
-          `${supabaseUrl}/rest/v1/services_with_metrics?select=*&order=quality_score.desc`,
-          {
-            headers: {
-              apikey: supabaseKey,
-              Authorization: `Bearer ${supabaseKey}`,
-            },
-          }
+        const data = await supabaseFetch<ServiceMetrics[]>(
+          'services_with_metrics?select=*&order=quality_score.desc'
         );
-
-        if (!res.ok) throw new Error('Failed to fetch services');
-        const data = await res.json();
         setServices(data);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Unknown error');

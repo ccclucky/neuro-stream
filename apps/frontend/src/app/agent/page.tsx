@@ -1,24 +1,68 @@
 'use client';
 
 import { usePrivy, useWallets } from '@privy-io/react-auth';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { isSupabaseConfigured, supabaseFetch } from '@/lib/supabase';
+import { useEmbeddedWallet } from '@/lib/useEmbeddedWallet';
+import { Deposit } from '@/components/deposit';
+
+interface Payment {
+  request_id: string;
+  agent: string;
+  provider: string;
+  amount: string;
+  status: 'Locked' | 'Released' | 'Refunded';
+  deadline: number;
+  tx_hash: string;
+  created_at: string;
+}
+
+function weiToEth(wei: string): string {
+  const num = BigInt(wei);
+  const eth = Number(num) / 1e18;
+  return eth.toFixed(6);
+}
+
+function shortenHex(hex: string, chars = 6): string {
+  return `${hex.slice(0, chars + 2)}...${hex.slice(-chars)}`;
+}
+
+const statusColors: Record<string, string> = {
+  Locked: 'bg-yellow-100 text-yellow-800',
+  Released: 'bg-green-100 text-green-800',
+  Refunded: 'bg-red-100 text-red-800',
+};
 
 export default function AgentPage() {
   const { login, authenticated, user, exportWallet } = usePrivy();
   const { wallets } = useWallets();
-  const [copied, setCopied] = useState(false);
+  const { embeddedAddress } = useEmbeddedWallet();
   const [showSdkGuide, setShowSdkGuide] = useState(false);
+  const [payments, setPayments] = useState<Payment[]>([]);
+  const [paymentsLoading, setPaymentsLoading] = useState(false);
 
   const embeddedWallet = wallets.find((w) => w.walletClientType === 'privy');
   const walletAddress = embeddedWallet?.address || user?.wallet?.address;
 
-  const copyAddress = () => {
-    if (walletAddress) {
-      navigator.clipboard.writeText(walletAddress);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+  useEffect(() => {
+    if (!walletAddress || !isSupabaseConfigured) return;
+
+    async function fetchPayments() {
+      setPaymentsLoading(true);
+      try {
+        const data = await supabaseFetch<Payment[]>(
+          `payments?select=*&agent=eq.${walletAddress!.toLowerCase()}&order=created_at.desc&limit=20`
+        );
+        setPayments(data);
+      } catch {
+        // silently fail — empty list shown
+      } finally {
+        setPaymentsLoading(false);
+      }
     }
-  };
+
+    fetchPayments();
+  }, [walletAddress]);
 
   if (!authenticated) {
     return (
@@ -41,40 +85,17 @@ export default function AgentPage() {
     <div className="max-w-4xl mx-auto">
       <h1 className="text-3xl font-bold text-gray-900 mb-8">Agent Developer Panel</h1>
 
-      {/* Wallet Info */}
-      <div className="bg-white rounded-xl shadow-sm border p-6 mb-6">
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">Wallet Information</h2>
-        <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <span className="text-gray-500">Address:</span>
-            <div className="flex items-center space-x-2">
-              <code className="text-sm bg-gray-100 px-3 py-1 rounded font-mono">
-                {walletAddress || 'No wallet found'}
-              </code>
-              {walletAddress && (
-                <button
-                  onClick={copyAddress}
-                  className="text-indigo-600 hover:text-indigo-800 text-sm"
-                >
-                  {copied ? 'Copied!' : 'Copy'}
-                </button>
-              )}
-            </div>
-          </div>
+      {/* Deposit (includes wallet info + balance + funding) */}
+      {embeddedAddress ? (
+        <Deposit embeddedAddress={embeddedAddress} />
+      ) : (
+        <div className="bg-yellow-50 rounded-xl border border-yellow-200 p-6 mb-6">
+          <h2 className="text-lg font-semibold text-yellow-800 mb-2">Creating Embedded Wallet...</h2>
+          <p className="text-yellow-700 text-sm">
+            Setting up your platform wallet. This only happens once.
+          </p>
         </div>
-      </div>
-
-      {/* Deposit Prompt */}
-      <div className="bg-yellow-50 rounded-xl border border-yellow-200 p-6 mb-6">
-        <h2 className="text-lg font-semibold text-yellow-800 mb-2">Fund Your Wallet</h2>
-        <p className="text-yellow-700 text-sm mb-3">
-          Send ETH (Monad Testnet) to your wallet address above. You need ETH for:
-        </p>
-        <ul className="text-yellow-700 text-sm list-disc list-inside space-y-1">
-          <li>Service fees (locked in Escrow during calls)</li>
-          <li>Gas fees for Escrow.open() transactions</li>
-        </ul>
-      </div>
+      )}
 
       {/* Export Private Key */}
       <div className="bg-white rounded-xl shadow-sm border p-6 mb-6">
@@ -148,12 +169,54 @@ const { result } = await client.invokeService(
         )}
       </div>
 
-      {/* Call History (placeholder) */}
+      {/* Call History */}
       <div className="bg-white rounded-xl shadow-sm border p-6">
         <h2 className="text-lg font-semibold text-gray-900 mb-4">Call History</h2>
-        <p className="text-gray-400 text-sm text-center py-8">
-          No calls yet. Integrate the SDK and start invoking services.
-        </p>
+
+        {paymentsLoading ? (
+          <div className="flex justify-center py-8">
+            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-indigo-600"></div>
+          </div>
+        ) : payments.length === 0 ? (
+          <p className="text-gray-400 text-sm text-center py-8">
+            No calls yet. Integrate the SDK and start invoking services.
+          </p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b text-left text-gray-500">
+                  <th className="pb-2 pr-4">Request ID</th>
+                  <th className="pb-2 pr-4">Provider</th>
+                  <th className="pb-2 pr-4">Amount</th>
+                  <th className="pb-2 pr-4">Status</th>
+                  <th className="pb-2">Time</th>
+                </tr>
+              </thead>
+              <tbody>
+                {payments.map((p) => (
+                  <tr key={p.request_id} className="border-b last:border-b-0">
+                    <td className="py-3 pr-4 font-mono text-xs">
+                      {shortenHex(p.request_id)}
+                    </td>
+                    <td className="py-3 pr-4 font-mono text-xs">
+                      {shortenHex(p.provider)}
+                    </td>
+                    <td className="py-3 pr-4">{weiToEth(p.amount)} ETH</td>
+                    <td className="py-3 pr-4">
+                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${statusColors[p.status] ?? ''}`}>
+                        {p.status}
+                      </span>
+                    </td>
+                    <td className="py-3 text-gray-500 text-xs">
+                      {new Date(p.created_at).toLocaleString()}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );

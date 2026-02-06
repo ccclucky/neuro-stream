@@ -20,7 +20,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
           accentColor: '#6366f1',
         },
         embeddedWallets: {
-          createOnLogin: 'users-without-wallets',
+          createOnLogin: 'all-users',
         },
       }}
     >

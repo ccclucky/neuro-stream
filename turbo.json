@@ -1,5 +1,26 @@
 {
   "$schema": "https://turbo.build/schema.json",
+  "globalPassThroughEnv": [
+    "MONAD_RPC_URL",
+    "ESCROW_CONTRACT_ADDRESS",
+    "DEPLOYER_PRIVATE_KEY",
+    "PROVIDER_PORT",
+    "PROVIDER_API_URL",
+    "PROVIDER_WALLET_ADDRESS",
+    "PROVIDER_PRIVATE_KEY",
+    "SUPABASE_URL",
+    "SUPABASE_ANON_KEY",
+    "SUPABASE_SERVICE_ROLE_KEY",
+    "SUPABASE_DB_URL",
+    "PRIVY_APP_ID",
+    "PRIVY_APP_SECRET",
+    "REPORT_GAS",
+    "NEXT_PUBLIC_MONAD_RPC_URL",
+    "NEXT_PUBLIC_ESCROW_CONTRACT_ADDRESS",
+    "NEXT_PUBLIC_SUPABASE_URL",
+    "NEXT_PUBLIC_SUPABASE_ANON_KEY",
+    "NEXT_PUBLIC_PRIVY_APP_ID"
+  ],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
