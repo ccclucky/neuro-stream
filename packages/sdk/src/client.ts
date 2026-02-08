@@ -1,37 +1,46 @@
 import { keccak256, toHex } from 'viem';
-import { EscrowClient, type EscrowClientConfig } from './escrow';
+import { EscrowClient } from './escrow';
 import { DiscoveryClient } from './discovery';
 import { MetricsReporter } from './metrics';
-import { generateKey, computeHashLock, decrypt } from './crypto';
+import { decrypt } from './crypto';
 import type {
   DiscoveryOptions,
   ServiceWithMetrics,
   PaymentChallenge,
   InvokeOptions,
+  CallServiceOptions,
+  CallServiceResult,
 } from './types';
 
-export interface NeuroStreamConfig extends EscrowClientConfig {
-  supabaseUrl?: string;
-  supabaseKey?: string;
+export interface NeuroStreamConfig {
+  apiKey: string;                          // Required — platform API Key (ns_live_...)
+  privateKey: `0x${string}`;               // Required — wallet private key
+  apiUrl?: string;                         // Optional — defaults to NEUROSTREAM_API_URL env
+  rpcUrl?: string;                         // Optional — defaults to MONAD_RPC_URL env
+  escrowAddress?: `0x${string}`;           // Optional — defaults to ESCROW_CONTRACT_ADDRESS env
+  chainId?: number;
 }
 
 export class NeuroStream {
   public readonly escrow: EscrowClient;
-  public readonly discovery: DiscoveryClient | null;
-  public readonly metrics: MetricsReporter | null;
+  public readonly discovery: DiscoveryClient;
+  public readonly metrics: MetricsReporter;
 
   constructor(config: NeuroStreamConfig) {
-    this.escrow = new EscrowClient(config);
+    const apiUrl = config.apiUrl || process.env.NEUROSTREAM_API_URL;
+    if (!apiUrl) {
+      throw new Error('apiUrl is required: pass it in config or set NEUROSTREAM_API_URL env var');
+    }
 
-    this.discovery =
-      config.supabaseUrl && config.supabaseKey
-        ? new DiscoveryClient(config.supabaseUrl, config.supabaseKey)
-        : null;
+    this.escrow = new EscrowClient({
+      privateKey: config.privateKey,
+      rpcUrl: config.rpcUrl,
+      escrowAddress: config.escrowAddress,
+      chainId: config.chainId,
+    });
 
-    this.metrics =
-      config.supabaseUrl && config.supabaseKey
-        ? new MetricsReporter(config.supabaseUrl, config.supabaseKey)
-        : null;
+    this.discovery = new DiscoveryClient(apiUrl, config.apiKey);
+    this.metrics = new MetricsReporter(apiUrl, config.apiKey);
   }
 
   get address(): `0x${string}` {
@@ -42,10 +51,51 @@ export class NeuroStream {
    * Discover available services sorted by quality score
    */
   async discoverServices(options: DiscoveryOptions = {}): Promise<ServiceWithMetrics[]> {
-    if (!this.discovery) {
-      throw new Error('Supabase URL and key are required for service discovery');
-    }
     return this.discovery.discoverServices(options);
+  }
+
+  /**
+   * High-level service call API:
+   *   - keyword mode: auto-discover → pick best → invoke
+   *   - serviceId mode: lookup service → invoke
+   * Returns result + selected service info + latency
+   */
+  async callService(options: CallServiceOptions): Promise<CallServiceResult> {
+    const startTime = Date.now();
+    let service: ServiceWithMetrics;
+
+    if (options.keyword) {
+      // Auto-discover by keyword, pick the highest quality_score
+      const services = await this.discoverServices({
+        keyword: options.keyword,
+        type: options.type,
+        minQualityScore: options.minQualityScore,
+      });
+      if (services.length === 0) {
+        throw new Error(`No services found matching keyword "${options.keyword}"`);
+      }
+      service = services[0];
+    } else if (options.serviceId) {
+      // Direct lookup by serviceId
+      const found = await this.discovery.getService(options.serviceId);
+      if (!found) {
+        throw new Error(`Service not found: ${options.serviceId}`);
+      }
+      service = found;
+    } else {
+      throw new Error('callService requires either keyword or serviceId');
+    }
+
+    // Invoke the service
+    const { result, requestId } = await this.invokeService(
+      service.endpoint,
+      options.params,
+      { timeout: options.timeout, serviceId: service.serviceId }
+    );
+
+    const latencyMs = Date.now() - startTime;
+
+    return { result, requestId, service, latencyMs };
   }
 
   /**
@@ -119,18 +169,16 @@ export class NeuroStream {
     const latencyMs = Date.now() - startTime;
 
     // Step 6: Report metrics (fire and forget)
-    if (this.metrics) {
-      this.metrics.reportCallLog({
-        serviceId: endpoint,
-        requestId,
-        agentAddress: this.address,
-        success: true,
-        latencyMs,
-        schemaMatch: true,
-      }).catch(() => {
-        // Silently ignore metrics reporting failures
-      });
-    }
+    this.metrics.reportCallLog({
+      serviceId: options.serviceId || endpoint,
+      requestId,
+      agentAddress: this.address,
+      success: true,
+      latencyMs,
+      schemaMatch: true,
+    }).catch(() => {
+      // Silently ignore metrics reporting failures
+    });
 
     return { result: plaintext, requestId };
   }

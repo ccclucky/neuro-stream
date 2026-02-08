@@ -21,7 +21,7 @@ if (missing.length > 0) {
 }
 
 const viemClient = createPublicClient({ transport: http(rpcUrl) });
-const supabase = createClient(supabaseUrl, supabaseServiceKey);
+const supabase = createClient(supabaseUrl!, supabaseServiceKey!);
 
 const indexer = createIndexer({
   viemClient,

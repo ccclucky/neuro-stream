@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import { createProviderApp } from './app';
 
 const PORT = parseInt(process.env.PROVIDER_PORT || '3001', 10);

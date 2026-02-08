@@ -29,8 +29,8 @@ export interface Payment {
 
 export interface EscrowClientConfig {
   privateKey: `0x${string}`;
-  rpcUrl: string;
-  escrowAddress: `0x${string}`;
+  rpcUrl?: string;
+  escrowAddress?: `0x${string}`;
   chainId?: number;
 }
 
@@ -68,23 +68,33 @@ export class EscrowClient {
   private chain: Chain;
 
   constructor(config: EscrowClientConfig) {
-    this.chain = createChain(config.chainId ?? 1, config.rpcUrl);
+    const rpcUrl = config.rpcUrl || process.env.MONAD_RPC_URL;
+    if (!rpcUrl) {
+      throw new Error('rpcUrl is required: pass it in config or set MONAD_RPC_URL env var');
+    }
+
+    const escrowAddress = config.escrowAddress || (process.env.ESCROW_CONTRACT_ADDRESS as `0x${string}` | undefined);
+    if (!escrowAddress) {
+      throw new Error('escrowAddress is required: pass it in config or set ESCROW_CONTRACT_ADDRESS env var');
+    }
+
+    this.chain = createChain(config.chainId ?? 1, rpcUrl);
     this.account = privateKeyToAccount(config.privateKey);
-    this.escrowAddress = config.escrowAddress;
+    this.escrowAddress = escrowAddress;
 
     this.publicClient = createPublicClient({
       chain: this.chain,
-      transport: http(config.rpcUrl),
+      transport: http(rpcUrl),
     });
 
     this.walletClient = createWalletClient({
       account: this.account,
       chain: this.chain,
-      transport: http(config.rpcUrl),
+      transport: http(rpcUrl),
     });
 
     this.contract = getContract({
-      address: config.escrowAddress,
+      address: escrowAddress,
       abi: EscrowABI,
       client: this.publicClient,
     });

@@ -1,36 +1,32 @@
 import type { ServiceWithMetrics, DiscoveryOptions } from './types';
 
 export class DiscoveryClient {
-  private supabaseUrl: string;
-  private supabaseKey: string;
+  private apiUrl: string;
+  private apiKey: string;
 
-  constructor(supabaseUrl: string, supabaseKey: string) {
-    this.supabaseUrl = supabaseUrl;
-    this.supabaseKey = supabaseKey;
+  constructor(apiUrl: string, apiKey: string) {
+    this.apiUrl = apiUrl;
+    this.apiKey = apiKey;
   }
 
   /**
-   * Discover available services, sorted by quality score
+   * Discover available services, sorted by quality score.
+   * Calls the NeuroStream services Edge Function.
    */
   async discoverServices(options: DiscoveryOptions = {}): Promise<ServiceWithMetrics[]> {
-    const url = new URL(`${this.supabaseUrl}/rest/v1/services_with_metrics`);
-
-    // Build query params
-    url.searchParams.set('select', '*');
-    url.searchParams.set('order', 'quality_score.desc.nullslast');
+    const url = new URL(`${this.apiUrl}/services`);
 
     if (options.type) {
-      url.searchParams.set('service_type', `eq.${options.type}`);
+      url.searchParams.set('type', options.type);
     }
 
     if (options.minQualityScore) {
-      url.searchParams.set('quality_score', `gte.${options.minQualityScore}`);
+      url.searchParams.set('minQualityScore', String(options.minQualityScore));
     }
 
     const response = await fetch(url.toString(), {
       headers: {
-        apikey: this.supabaseKey,
-        Authorization: `Bearer ${this.supabaseKey}`,
+        'x-api-key': this.apiKey,
         'Content-Type': 'application/json',
       },
     });
@@ -40,36 +36,42 @@ export class DiscoveryClient {
     }
 
     const data = (await response.json()) as Record<string, unknown>[];
-    return this.mapToServiceWithMetrics(data);
+    let services = this.mapToServiceWithMetrics(data);
+
+    // Client-side keyword filtering (fuzzy match on serviceId and service_type)
+    if (options.keyword) {
+      const kw = options.keyword.toLowerCase();
+      services = services.filter(
+        (s) =>
+          s.serviceId.toLowerCase().includes(kw) ||
+          (s.schema.input && s.schema.input.toLowerCase().includes(kw)) ||
+          (s.schema.output && s.schema.output.toLowerCase().includes(kw))
+      );
+    }
+
+    return services;
   }
 
   /**
    * Get a specific service by ID
    */
   async getService(serviceId: string): Promise<ServiceWithMetrics | null> {
-    const url = new URL(`${this.supabaseUrl}/rest/v1/services_with_metrics`);
-    url.searchParams.set('select', '*');
-    url.searchParams.set('service_id', `eq.${serviceId}`);
-    url.searchParams.set('limit', '1');
+    const url = `${this.apiUrl}/services/${encodeURIComponent(serviceId)}`;
 
-    const response = await fetch(url.toString(), {
+    const response = await fetch(url, {
       headers: {
-        apikey: this.supabaseKey,
-        Authorization: `Bearer ${this.supabaseKey}`,
+        'x-api-key': this.apiKey,
         'Content-Type': 'application/json',
       },
     });
 
     if (!response.ok) {
+      if (response.status === 404) return null;
       throw new Error(`Get service failed: ${response.status} ${response.statusText}`);
     }
 
-    const data = (await response.json()) as Record<string, unknown>[];
-    if (data.length === 0) {
-      return null;
-    }
-
-    return this.mapToServiceWithMetrics(data)[0];
+    const data = (await response.json()) as Record<string, unknown>;
+    return this.mapToServiceWithMetrics([data])[0] ?? null;
   }
 
   private mapToServiceWithMetrics(data: unknown[]): ServiceWithMetrics[] {

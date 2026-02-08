@@ -60,4 +60,23 @@ export interface DiscoveryOptions {
 export interface InvokeOptions {
   timeout?: number;
   waitForClaim?: boolean;
+  serviceId?: string;  // used for metrics reporting; falls back to endpoint
+}
+
+// High-level callService options
+export interface CallServiceOptions {
+  keyword?: string;           // Auto-discover mode: fuzzy match serviceId/type
+  serviceId?: string;         // Direct service mode: specify exact serviceId
+  type?: string;              // Filter by service type
+  minQualityScore?: number;
+  params: Record<string, unknown>;
+  timeout?: number;
+}
+
+// callService result
+export interface CallServiceResult {
+  result: string;
+  requestId: `0x${string}`;
+  service: ServiceWithMetrics;   // The service that was selected and invoked
+  latencyMs: number;
 }

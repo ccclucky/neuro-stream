@@ -61,25 +61,49 @@ export default function ProviderPage() {
   const walletAddress = embeddedWallet?.address || user?.wallet?.address;
 
   const fetchProviderData = useCallback(async () => {
+    console.log('[Provider] fetchProviderData called', { walletAddress, isSupabaseConfigured });
     if (!walletAddress || !isSupabaseConfigured) return;
 
     setDataLoading(true);
-    const addrLower = walletAddress.toLowerCase();
 
     try {
-      const [services, pending, released] = await Promise.all([
-        supabaseFetch<Service[]>(
-          `services?select=*&recipient=ilike.${walletAddress}&status=eq.active&order=created_at.desc`
-        ),
-        supabaseFetch<Payment[]>(
-          `payments?select=*&provider=eq.${addrLower}&status=eq.Locked&order=created_at.desc`
-        ),
-        supabaseFetch<Pick<Payment, 'amount'>[]>(
-          `payments?select=amount&provider=eq.${addrLower}&status=eq.Released`
-        ),
-      ]);
-
+      // 1. Fetch user's services by recipient (Privy wallet)
+      const services = await supabaseFetch<Service[]>(
+        `services?select=*&recipient=ilike.${walletAddress}&status=eq.active&order=created_at.desc`
+      );
       setMyServices(services);
+
+      // 2. Bridge to payments via call_logs (service_id → request_id)
+      //    payments.provider is the on-chain PROVIDER_WALLET_ADDRESS which
+      //    differs from the Privy embedded wallet, so we look up through call_logs.
+      const serviceIds = services.map((s) => s.service_id);
+      console.log('[Provider] services:', serviceIds);
+
+      let pending: Payment[] = [];
+      let released: Pick<Payment, 'amount'>[] = [];
+
+      if (serviceIds.length > 0) {
+        const logs = await supabaseFetch<{ request_id: string }[]>(
+          `call_logs?select=request_id&service_id=in.(${serviceIds.join(',')})`
+        );
+        console.log('[Provider] call_logs:', logs);
+        const requestIds = [...new Set(logs.map((l) => l.request_id).filter(Boolean))];
+        console.log('[Provider] requestIds:', requestIds);
+
+        if (requestIds.length > 0) {
+          const reqFilter = requestIds.join(',');
+          [pending, released] = await Promise.all([
+            supabaseFetch<Payment[]>(
+              `payments?select=*&request_id=in.(${reqFilter})&status=eq.Locked&order=created_at.desc`
+            ),
+            supabaseFetch<Pick<Payment, 'amount'>[]>(
+              `payments?select=amount&request_id=in.(${reqFilter})&status=eq.Released`
+            ),
+          ]);
+          console.log('[Provider] pending:', pending, 'released:', released);
+        }
+      }
+
       setPendingClaims(pending);
 
       // Aggregate revenue
@@ -90,8 +114,8 @@ export default function ProviderPage() {
       const eth = Number(sum) / 1e18;
       setTotalEarned(eth.toFixed(6));
       setTotalCalls(released.length);
-    } catch {
-      // silently fail — sections show empty/zero
+    } catch (err) {
+      console.error('[Provider] fetchProviderData error:', err);
     } finally {
       setDataLoading(false);
     }

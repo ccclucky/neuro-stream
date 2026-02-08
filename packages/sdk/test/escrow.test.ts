@@ -30,6 +30,38 @@ describe('EscrowClient', () => {
       const client = new EscrowClient(mockConfig);
       expect(client.address).toMatch(/^0x[0-9a-fA-F]{40}$/);
     });
+
+    it('should fallback to MONAD_RPC_URL env if rpcUrl not provided', () => {
+      process.env.MONAD_RPC_URL = 'http://env-rpc:8545';
+      process.env.ESCROW_CONTRACT_ADDRESS = '0x5FbDB2315678afecb367f032d93F642f64180aa3';
+      const client = new EscrowClient({
+        privateKey: mockConfig.privateKey,
+      });
+      expect(client).toBeDefined();
+      delete process.env.MONAD_RPC_URL;
+      delete process.env.ESCROW_CONTRACT_ADDRESS;
+    });
+
+    it('should throw if rpcUrl missing and no env', () => {
+      const origRpc = process.env.MONAD_RPC_URL;
+      const origEscrow = process.env.ESCROW_CONTRACT_ADDRESS;
+      delete process.env.MONAD_RPC_URL;
+      delete process.env.ESCROW_CONTRACT_ADDRESS;
+      expect(() => new EscrowClient({ privateKey: mockConfig.privateKey }))
+        .toThrow('rpcUrl is required');
+      process.env.MONAD_RPC_URL = origRpc;
+      process.env.ESCROW_CONTRACT_ADDRESS = origEscrow;
+    });
+
+    it('should throw if escrowAddress missing and no env', () => {
+      const origEscrow = process.env.ESCROW_CONTRACT_ADDRESS;
+      delete process.env.ESCROW_CONTRACT_ADDRESS;
+      expect(() => new EscrowClient({
+        privateKey: mockConfig.privateKey,
+        rpcUrl: 'http://127.0.0.1:8545',
+      })).toThrow('escrowAddress is required');
+      process.env.ESCROW_CONTRACT_ADDRESS = origEscrow;
+    });
   });
 
   describe('interface', () => {

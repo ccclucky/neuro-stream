@@ -1,8 +1,8 @@
 // Supabase Edge Function: services
 // Endpoints:
-//   GET  /services         — List services (sorted by quality_score)
-//   GET  /services/:id     — Get service details
-//   POST /services         — Register new service (provider)
+//   GET  /services         — List services (sorted by quality_score) — API Key optional
+//   GET  /services/:id     — Get service details — API Key optional
+//   POST /services         — Register new service (provider) — requires wallet signature
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
@@ -10,8 +10,69 @@ import { verifyMessage } from 'https://esm.sh/viem@2.7.0';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-api-key',
 };
+
+/** SHA-256 hash a string, return hex */
+async function sha256(input: string): Promise<string> {
+  const encoded = new TextEncoder().encode(input);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', encoded);
+  return Array.from(new Uint8Array(hashBuffer))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+/**
+ * Validate API Key from request headers.
+ * Checks x-api-key header or Authorization: Bearer ns_live_...
+ * Returns { valid, walletAddress } or { valid: false }.
+ */
+async function validateApiKey(
+  req: Request,
+  supabase: ReturnType<typeof createClient>
+): Promise<{ valid: boolean; walletAddress?: string }> {
+  // Extract key from x-api-key or Authorization header
+  let apiKey = req.headers.get('x-api-key');
+  if (!apiKey) {
+    const authHeader = req.headers.get('authorization');
+    if (authHeader?.startsWith('Bearer ns_live_')) {
+      apiKey = authHeader.slice(7); // Remove "Bearer "
+    }
+  }
+
+  if (!apiKey || !apiKey.startsWith('ns_live_')) {
+    return { valid: false };
+  }
+
+  const keyHash = await sha256(apiKey);
+
+  const { data, error } = await supabase
+    .from('api_keys')
+    .select('wallet_address, is_active, expires_at')
+    .eq('key_hash', keyHash)
+    .single();
+
+  if (error || !data) {
+    return { valid: false };
+  }
+
+  if (!data.is_active) {
+    return { valid: false };
+  }
+
+  if (data.expires_at && new Date(data.expires_at) < new Date()) {
+    return { valid: false };
+  }
+
+  // Update last_used_at (fire and forget)
+  supabase
+    .from('api_keys')
+    .update({ last_used_at: new Date().toISOString() })
+    .eq('key_hash', keyHash)
+    .then(() => {});
+
+  return { valid: true, walletAddress: data.wallet_address };
+}
 
 serve(async (req) => {
   // Handle CORS preflight
@@ -27,8 +88,11 @@ serve(async (req) => {
   const pathParts = url.pathname.split('/').filter(Boolean);
 
   try {
-    // GET /services - List all active services
+    // GET /services - List all active services (API Key optional)
     if (req.method === 'GET' && pathParts.length <= 1) {
+      // Optionally validate API key (not required for browsing)
+      await validateApiKey(req, supabase);
+
       const type = url.searchParams.get('type');
       const minScore = url.searchParams.get('minQualityScore');
 
@@ -54,8 +118,10 @@ serve(async (req) => {
       });
     }
 
-    // GET /services/:id - Get specific service
+    // GET /services/:id - Get specific service (API Key optional)
     if (req.method === 'GET' && pathParts.length === 2) {
+      await validateApiKey(req, supabase);
+
       const serviceId = pathParts[1];
 
       const { data, error } = await supabase

@@ -1,19 +1,20 @@
 import type { CallLog } from './types';
 
 export class MetricsReporter {
-  private supabaseUrl: string;
-  private supabaseKey: string;
+  private apiUrl: string;
+  private apiKey: string;
 
-  constructor(supabaseUrl: string, supabaseKey: string) {
-    this.supabaseUrl = supabaseUrl;
-    this.supabaseKey = supabaseKey;
+  constructor(apiUrl: string, apiKey: string) {
+    this.apiUrl = apiUrl;
+    this.apiKey = apiKey;
   }
 
   /**
-   * Report a call log for metrics aggregation
+   * Report a call log for metrics aggregation.
+   * Calls the NeuroStream metrics Edge Function.
    */
   async reportCallLog(log: CallLog): Promise<void> {
-    const url = `${this.supabaseUrl}/rest/v1/call_logs`;
+    const url = `${this.apiUrl}/metrics`;
 
     const body = {
       service_id: log.serviceId,
@@ -27,10 +28,8 @@ export class MetricsReporter {
     const response = await fetch(url, {
       method: 'POST',
       headers: {
-        apikey: this.supabaseKey,
-        Authorization: `Bearer ${this.supabaseKey}`,
+        'x-api-key': this.apiKey,
         'Content-Type': 'application/json',
-        Prefer: 'return=minimal',
       },
       body: JSON.stringify(body),
     });

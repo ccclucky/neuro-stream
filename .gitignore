@@ -8,6 +8,7 @@ node_modules/
 .env.production
 .env.*.local
 apps/provider/.env
+apps/agent/.env
 
 # Build outputs
 dist/

@@ -50,11 +50,12 @@ sequenceDiagram
 ```
 packages/
   contracts/     Escrow 智能合约（Solidity + Hardhat，18 个测试）
-  sdk/           TypeScript SDK，Agent 开发者使用（23 个测试）
+  sdk/           TypeScript SDK，Agent 开发者使用（26 个测试）
   indexer/       viem + Supabase 链上事件轮询索引器（7 个测试）
 apps/
   frontend/      Next.js DApp — 服务发现、Agent 与 Provider 面板
   provider/      Provider API 服务，含 402 挑战流程（5 个测试）
+  agent/         AI Agent CLI — Gemini + NeuroStream 自主付费对话
   backend/       Supabase Edge Functions + 数据库迁移
 scripts/
   demo-flow.ts       本地演示（Hardhat 节点）
@@ -132,6 +133,9 @@ cp .env.example .env.local
 | `SUPABASE_DB_URL` | 否 | Supabase PostgreSQL 连接串（运行迁移时需要） |
 | `PRIVY_APP_ID` | 否 | Privy 应用 ID |
 | `PRIVY_APP_SECRET` | 否 | Privy 应用密钥 |
+| `GEMINI_API_KEY` | 否 | Google Gemini API Key（Agent CLI 需要） |
+| `NEUROSTREAM_API_URL` | 否 | NeuroStream Edge Functions URL |
+| `NEUROSTREAM_API_KEY` | 否 | NeuroStream API Key（SDK 认证） |
 
 ### 4. 启动开发服务
 
@@ -156,29 +160,61 @@ pnpm db:migrate   # 执行 Supabase 数据库迁移（需要 DATABASE_URL）
 import { NeuroStream } from '@neurostream/sdk';
 
 const client = new NeuroStream({
-  rpcUrl: 'https://testnet.monad.xyz',
-  escrowAddress: '0x...',
-  privateKey: '0x...',
-  supabaseUrl: 'https://xxx.supabase.co',
-  supabaseKey: 'your-anon-key',
+  apiKey: 'ns_live_xxxx',    // 平台注册后获取
+  privateKey: '0x...',       // Privy 导出的钱包私钥
 });
 
-// 发现服务（按质量评分排序）
-const services = await client.discoverServices({
-  keyword: 'summarize',
-  minQualityScore: 0.8,
+// Layer 1: 自动发现 + 选最优 + 自动付费调用
+const { result } = await client.callService({
+  keyword: 'text-analysis',
+  params: { text: 'Hello world' },
 });
 
-// 调用服务 — SDK 自动编排完整 Escrow 流程
-const { result, requestId } = await client.invokeService(
-  'https://provider.example.com/api/summarize',
-  { url: 'https://example.com/article' }
+// Layer 2: 指定 serviceId + 自动付费调用
+const { result: r2 } = await client.callService({
+  serviceId: 'text-analysis-v1',
+  params: { text: 'Hello world' },
+});
+
+// Layer 3: 直接传 endpoint（高级用户）
+const { result: r3, requestId } = await client.invokeService(
+  'https://provider.example.com/invoke',
+  { text: 'Hello world' }
 );
-
-console.log(result); // 解密后的明文结果
 ```
 
 SDK 自动编排完整流程：获取付费挑战（402）→ Escrow 锁款 → 接收加密内容 → 监听链上 claim → 解密返回。
+
+## AI Agent CLI
+
+`apps/agent/` 是一个完整的 AI Agent 应用：使用 Gemini 作为大脑，NeuroStream SDK 作为付费工具，通过终端交互式对话演示"AI Agent 自主付费调用链上服务"。
+
+```
+User 输入 → NeuroStream invokeService（链上 Escrow 付费） → Gemini 生成回复 → 终端显示
+```
+
+### 启动 Agent
+
+```bash
+# 1. 确保 .env.local 中配置了 GEMINI_API_KEY 和 ESCROW_CONTRACT_ADDRESS
+# 2. Hardhat 节点运行中，合约已部署，Provider 服务运行中
+# 3. 启动（pnpm dev 会自动启动所有 apps，包括 agent）
+pnpm dev
+```
+
+### Agent 命令
+
+| 命令 | 说明 |
+|------|------|
+| `/help` | 显示帮助信息 |
+| `/balance` | 查看当前钱包余额 |
+| `/quit` | 退出 Agent |
+| 任意文本 | 付费调用 NeuroStream → Gemini 生成回复 |
+
+每次用户输入，Agent 自动完成：
+1. 调用 NeuroStream `invokeService()`（5 步 Escrow 流程，支付 0.001 ETH）
+2. 将链上服务返回的结果传给 Gemini，生成智能回复
+3. 在终端显示付款信息（requestId、费用、延迟）+ AI 回复
 
 ## 智能合约
 
@@ -222,13 +258,13 @@ pnpm db:migrate
 ## 测试
 
 ```bash
-# 全部测试（共 54 个）
+# 全部测试（共 57 个）
 pnpm test
 
 # 仅合约测试（18 个）
 cd packages/contracts && npx hardhat test
 
-# 仅 SDK 测试（23 个）
+# 仅 SDK 测试（26 个）
 cd packages/sdk && pnpm test
 
 # 仅 Provider 测试（5 个）

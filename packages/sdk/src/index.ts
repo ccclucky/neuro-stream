@@ -32,6 +32,8 @@ export type {
   CallLog,
   DiscoveryOptions,
   InvokeOptions,
+  CallServiceOptions,
+  CallServiceResult,
 } from './types';
 
 // ABI
