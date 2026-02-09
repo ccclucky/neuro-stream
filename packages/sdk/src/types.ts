@@ -80,3 +80,13 @@ export interface CallServiceResult {
   service: ServiceWithMetrics;   // The service that was selected and invoked
   latencyMs: number;
 }
+
+// Gateway challenge (402 response from Gateway)
+export interface GatewayChallenge {
+  requestId: string;
+  hashLock: string;
+  amount: string;
+  recipient: string;
+  deadline: number;
+  status?: string;
+}

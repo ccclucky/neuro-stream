@@ -68,6 +68,9 @@ importers:
 
   apps/frontend:
     dependencies:
+      '@neurostream/sdk':
+        specifier: workspace:*
+        version: link:../../packages/sdk
       '@privy-io/react-auth':
         specifier: ^1.66.0
         version: 1.99.1(@solana/web3.js@1.98.4)(@types/react@18.3.27)(bs58@6.0.0)(react-dom@18.3.1)(react@18.3.1)(typescript@5.9.3)
@@ -114,18 +117,12 @@ importers:
 
   apps/provider:
     dependencies:
-      '@noble/ciphers':
-        specifier: ^0.5.1
-        version: 0.5.3
       dotenv:
         specifier: ^16.4.0
         version: 16.6.1
       express:
         specifier: ^4.18.2
         version: 4.22.1
-      viem:
-        specifier: ^2.7.0
-        version: 2.45.1(typescript@5.9.3)
     devDependencies:
       '@types/express':
         specifier: ^4.17.21

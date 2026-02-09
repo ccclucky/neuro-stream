@@ -29,6 +29,7 @@ export type {
   ServiceMetrics,
   ServiceWithMetrics,
   PaymentChallenge,
+  GatewayChallenge,
   CallLog,
   DiscoveryOptions,
   InvokeOptions,

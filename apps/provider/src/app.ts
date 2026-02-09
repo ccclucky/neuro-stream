@@ -1,7 +1,7 @@
 import express from 'express';
-import { invokeRouter, type ProviderConfig } from './routes/invoke';
+import { invokeRouter } from './routes/invoke';
 
-export function createProviderApp(config: ProviderConfig): express.Express {
+export function createProviderApp(): express.Express {
   const app = express();
 
   app.use(express.json());
@@ -11,8 +11,8 @@ export function createProviderApp(config: ProviderConfig): express.Express {
     res.json({ status: 'ok' });
   });
 
-  // Main invoke route
-  app.use('/invoke', invokeRouter(config));
+  // Main invoke route — simple HTTP API, no escrow/wallet needed
+  app.use('/invoke', invokeRouter());
 
   return app;
 }

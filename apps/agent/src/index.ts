@@ -5,7 +5,7 @@ import { createPublicClient, http } from 'viem';
 import { hardhat } from 'viem/chains';
 import { NeuroStream } from '@neurostream/sdk';
 import { createGeminiClient, createChat, sendMessage, type ToolExecutor } from './gemini.js';
-import { discoverServices, invokeService } from './neurostream.js';
+import { callService } from './neurostream.js';
 import { banner, divider, info, prompt, agentSays, paymentInfo, errorMsg, helpText } from './ui.js';
 
 // ── Environment validation ───────────────────────────────
@@ -45,21 +45,12 @@ const publicClient = createPublicClient({
   transport: http(RPC_URL),
 });
 
-// ── Tool executor: bridges Gemini function calls → NeuroStream SDK ──
+// ── Tool executor: single tool — call_service ──
 const executeTool: ToolExecutor = async (name, args) => {
-  if (name === 'discover_services') {
-    return discoverServices(
-      client,
-      args.keyword as string | undefined,
-      args.type as string | undefined,
-    );
-  }
-
-  if (name === 'invoke_service') {
-    const serviceId = args.serviceId as string;
-    const endpoint = args.endpoint as string;
+  if (name === 'call_service') {
+    const keyword = args.keyword as string | undefined;
     const text = args.text as string;
-    const result = await invokeService(client, endpoint, text, RPC_URL, serviceId);
+    const result = await callService(client, keyword, text, RPC_URL);
 
     paymentInfo({
       requestId: result.requestId,
@@ -84,10 +75,8 @@ async function handleUserInput(input: string): Promise<void> {
   divider();
 
   const reply = await sendMessage(chat, input, executeTool, (name, args) => {
-    if (name === 'discover_services') {
-      console.log(`  Discovering services (keyword: ${args.keyword ?? 'all'})...`);
-    } else if (name === 'invoke_service') {
-      console.log(`  Calling NeuroStream (on-chain escrow payment)...`);
+    if (name === 'call_service') {
+      console.log(`  Calling NeuroStream (keyword: ${args.keyword ?? 'auto'})...`);
     }
   });
 

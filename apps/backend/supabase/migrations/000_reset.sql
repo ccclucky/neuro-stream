@@ -6,7 +6,9 @@
 DROP TRIGGER IF EXISTS call_log_insert_trigger ON call_logs;
 DROP FUNCTION IF EXISTS trigger_update_metrics();
 DROP FUNCTION IF EXISTS update_service_metrics(TEXT);
+DROP VIEW IF EXISTS provider_revenue;
 DROP VIEW IF EXISTS services_with_metrics;
+DROP TABLE IF EXISTS gateway_challenges CASCADE;
 DROP TABLE IF EXISTS api_keys CASCADE;
 DROP TABLE IF EXISTS indexer_state CASCADE;
 DROP TABLE IF EXISTS payments CASCADE;

@@ -2,13 +2,12 @@ import { GoogleGenAI, Type, type FunctionDeclaration, type Part, type Chat } fro
 
 const SYSTEM_INSTRUCTION = `You are NeuroStream Agent — an AI assistant that pays for on-chain data services to fulfill user requests.
 
-You MUST follow this workflow for any user request that involves processing, analyzing, or transforming data:
-1. Call discover_services (without keyword) to see all available services
-2. Pick the most relevant service from the results
-3. Call invoke_service with the service's endpoint and the user's input text
-4. Present the result to the user in a clear, natural way
+You have ONE tool: call_service. When a user asks you to process, analyze, or transform data:
+1. Call call_service with a keyword matching the type of service needed, and the user's input text
+2. The platform will auto-discover the best service, handle payment via escrow, and return the result
+3. Present the result to the user clearly
 
-ONLY skip this workflow for pure greetings like "hi" or "hello" with no task.
+ONLY skip calling the tool for pure greetings like "hi" or "hello" with no task.
 
 When presenting results:
 - If the result is JSON, extract key insights and present them clearly
@@ -19,45 +18,23 @@ export function createGeminiClient(apiKey: string): GoogleGenAI {
   return new GoogleGenAI({ apiKey });
 }
 
-// Tool declarations for Gemini function calling
 const functionDeclarations: FunctionDeclaration[] = [
   {
-    name: 'discover_services',
-    description: 'Browse and search for available paid services on the NeuroStream platform. Returns a list of services with their endpoints, pricing, and descriptions. IMPORTANT: Call this WITHOUT any keyword first to see ALL available services. Only use keyword if you want to narrow down a large list.',
+    name: 'call_service',
+    description: 'Discover, pay for, and invoke an on-chain NeuroStream service in one step. The platform handles service discovery, escrow payment, and result retrieval automatically.',
     parameters: {
       type: Type.OBJECT,
       properties: {
         keyword: {
           type: Type.STRING,
-          description: 'Optional keyword to filter results. Omit this to list ALL services. If provided, matches against service ID and schema descriptions.',
-        },
-        type: {
-          type: Type.STRING,
-          description: 'Optional service type filter (e.g. "utility", "ai", "data")',
-        },
-      },
-    },
-  },
-  {
-    name: 'invoke_service',
-    description: 'Pay for and invoke a service via on-chain escrow payment. This costs real tokens. You must provide the serviceId and endpoint URL (both obtained from discover_services) and the text input.',
-    parameters: {
-      type: Type.OBJECT,
-      properties: {
-        serviceId: {
-          type: Type.STRING,
-          description: 'The service ID to invoke (from discover_services result)',
-        },
-        endpoint: {
-          type: Type.STRING,
-          description: 'The service endpoint URL to invoke (from discover_services result)',
+          description: 'Keyword to find the right service (e.g. "string", "text", "translate"). Leave empty to search all services.',
         },
         text: {
           type: Type.STRING,
           description: 'The text input to send to the service',
         },
       },
-      required: ['serviceId', 'endpoint', 'text'],
+      required: ['text'],
     },
   },
 ];
@@ -88,7 +65,6 @@ export async function sendMessage(
 ): Promise<string> {
   let response = await chat.sendMessage({ message: userInput });
 
-  // Function calling loop — Gemini may call tools multiple times
   let rounds = 0;
   while (response.functionCalls && response.functionCalls.length > 0 && rounds < MAX_TOOL_ROUNDS) {
     rounds++;
