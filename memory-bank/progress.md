@@ -1,16 +1,16 @@
 # NeuroStream MVP 开发进度
 
-> 最后更新: 2026-02-05
+> 最后更新: 2026-02-10
 
-## 总体状态: 阶段 0-8 全部完成 ✅
+## 总体状态: 阶段 0-9 全部完成 ✅
 
 ## 测试统计
 - Contracts: 18/18 ✅
-- SDK: 23/23 ✅
-- Provider: 5/5 ✅
+- SDK: 31/31 ✅ （含 5 个 Gateway 测试）
+- Provider: 6/6 ✅ （v3 简化 API 测试）
 - Indexer: 7/7 ✅
-- E2E: 1/1 ✅
-- **总计: 54 测试全部通过**
+- E2E: 1/1 ✅ （需 Hardhat 节点）
+- **总计: 62 测试全部通过**
 
 ---
 
@@ -53,7 +53,7 @@
 - [x] TDD 循环 3：服务发现 — DiscoveryClient（3 测试）
 - [x] TDD 循环 4：invokeService 完整流程 — NeuroStream 主客户端
 - [x] TDD 循环 5：质量指标上报 — MetricsReporter（2 测试）
-- **23 测试全部通过**
+- **23 测试（v2）→ 31 测试（v3，含 Gateway 测试）**
 - **Commit**: `e87a641 feat(sdk): add NeuroStream SDK with crypto, escrow client, discovery and metrics`
 
 ### 关键文件
@@ -61,23 +61,25 @@
 - `packages/sdk/src/escrow.ts` — EscrowClient（合约交互）
 - `packages/sdk/src/discovery.ts` — 服务发现客户端
 - `packages/sdk/src/metrics.ts` — 质量指标上报
-- `packages/sdk/src/client.ts` — NeuroStream 主入口（orchestrates 完整流程）
+- `packages/sdk/src/client.ts` — NeuroStream 主入口（v3 含 Gateway 路由）
 - `packages/sdk/src/abi.ts` — Escrow 合约 ABI
-- `packages/sdk/src/types.ts` — 类型定义
+- `packages/sdk/src/types.ts` — 类型定义（含 GatewayChallenge）
 - `packages/sdk/src/index.ts` — 导出入口
+- `packages/sdk/test/gateway.test.ts` — 5 个 Gateway 测试（v3 新增）
 
 ## 阶段 4：Provider 服务（TDD）✅
-- [x] TDD 循环 1：402 Payment Challenge — hashLock 生成
-- [x] TDD 循环 2：加密交付 — 链上验证 + ciphertext 返回
+- [x] ~~TDD 循环 1：402 Payment Challenge — hashLock 生成~~ （v3 已移除）
+- [x] ~~TDD 循环 2：加密交付 — 链上验证 + ciphertext 返回~~ （v3 已移除）
+- [x] v3 简化：纯 HTTP API，无钱包/加密/claim 逻辑
 - [x] string-length 示例服务
-- **5 测试全部通过**
+- **6 测试全部通过**（v3 重写）
 - **Commit**: `a644799 feat(provider): add Provider API with 402 payment challenge and encrypted delivery`
 
-### 关键文件
-- `apps/provider/src/app.ts` — Express 应用
-- `apps/provider/src/routes/invoke.ts` — /invoke 路由（402 + 加密交付）
+### 关键文件（v3）
+- `apps/provider/src/app.ts` — Express 应用（无参数配置）
+- `apps/provider/src/routes/invoke.ts` — /invoke 路由（纯 HTTP：`{ text } → { result }`）
 - `apps/provider/src/services/string-length.ts` — 示例服务
-- `apps/provider/test/api.test.ts` — 5 个测试
+- `apps/provider/test/api.test.ts` — 6 个测试
 
 ## 阶段 5：viem + Supabase 索引器 ✅
 - [x] `packages/indexer/` 重写为 viem + Supabase 轮询索引器
@@ -137,13 +139,39 @@
 ### 关键文件
 - `e2e/full-flow.test.ts` — 完整 Agent→Provider→Escrow 流程测试
 
+## 阶段 9：Payment Gateway + Agent 简化（v3）✅
+- [x] 数据库迁移 — `gateway_challenges` 表 + 状态机 + 索引
+- [x] Gateway 状态机 — 9 状态、乐观锁、写前执行
+- [x] Gateway API Route — POST /invoke + GET /status
+- [x] 恢复任务 — 每 30s 自动处理卡住的请求
+- [x] SDK 重写 — `gatewayUrl` 配置 + `callService()` 自动路由
+- [x] Provider 简化 — 移除所有钱包/加密/claim 逻辑，纯 HTTP API
+- [x] Agent 简化 — 2 个工具 → 1 个工具 (`call_service`)
+- [x] 环境变量更新 — `NEUROSTREAM_GATEWAY_URL`, `GATEWAY_PRIVATE_KEY`, `GATEWAY_WALLET_ADDRESS`
+- [x] 测试更新 — SDK +5 Gateway 测试，Provider 重写 6 测试
+- [x] 全流程测试通过
+- **SDK: 23→31 测试 | Provider: 5→6 测试 | 总计: 54→62 测试**
+- **Commit**: `f88cf68 feat: add Payment Gateway for simplified Provider/Agent integration`
+
+### 关键文件
+- `apps/backend/supabase/migrations/004_gateway.sql` — Gateway 数据库迁移
+- `apps/frontend/src/lib/gateway/state-machine.ts` — 状态机核心逻辑
+- `apps/frontend/src/app/api/gateway/invoke/route.ts` — Gateway invoke 端点
+- `apps/frontend/src/app/api/gateway/status/route.ts` — Gateway status 端点
+- `packages/sdk/src/client.ts` — SDK 客户端（含 Gateway 路由）
+- `packages/sdk/src/types.ts` — GatewayChallenge 类型
+- `packages/sdk/test/gateway.test.ts` — 5 个 Gateway 测试
+- `apps/provider/src/routes/invoke.ts` — 简化后的 Provider（19 行）
+- `apps/agent/src/gemini.ts` — 简化后的 Agent（1 个工具）
+- `apps/agent/src/neurostream.ts` — Agent SDK 集成
+- `docs/full-flow-test.md` — 全流程测试指南（v3）
+
 ---
 
 ## 待完成（上线前）
 - [ ] 在 Monad Testnet 部署 Escrow 合约
 - [ ] 配置 Supabase 项目并运行 migration
 - [ ] 配置 Privy App（privy.io）
-- [ ] 填写所有 `.env` 值
-- [ ] 集成 Privy Server SDK 实现 Provider 自动 claim
+- [ ] 填写所有 `.env` 生产值
 - [ ] 运行 E2E 测试验证完整流程
 - [ ] Demo 准备：演示钱包、预注册服务

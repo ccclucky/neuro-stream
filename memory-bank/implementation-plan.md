@@ -436,6 +436,58 @@ const result = await client.invokeService(services[0].id, {
 
 ---
 
+### 阶段 9：Payment Gateway + Agent 简化（v3）
+**目标**：引入 Payment Gateway 中介，简化 Provider 和 Agent 集成
+
+#### 9.1 数据库迁移
+- [x] `gateway_challenges` 表 — 9 状态、per-state 时间戳、结果存储、claim tx 追踪
+- [x] 索引 — status、agent、service、deadline、recovery 复合索引
+- [x] `provider_revenue` 聚合视图
+- [x] 更新 `000_reset.sql` 清理脚本
+
+#### 9.2 Gateway 状态机
+- [x] `state-machine.ts` — 核心逻辑（~400 行）
+- [x] 9 状态：CREATED → ESCROW_LOCKED → PROVIDER_CALLED → RESULT_STORED → CLAIMED → COMPLETED（+ FAILED/REFUNDABLE/REFUNDED）
+- [x] 乐观锁：`WHERE status = expected_status`
+- [x] 写前执行原则（先 DB 再外部操作）
+- [x] API Key 验证（查询 Supabase `api_keys` 表）
+- [x] 链上 Escrow 验证 + claim 执行
+
+#### 9.3 Gateway API Route
+- [x] `POST /api/gateway/invoke` — 无 requestId → 402 挑战；有 requestId → 完整流程
+- [x] `GET /api/gateway/status` — 状态查询（polling fallback）
+- [x] 恢复任务 — 每 30s 自动处理卡住请求
+
+#### 9.4 SDK 重写
+- [x] `gatewayUrl` 配置项
+- [x] `callService()` 自动路由（Gateway / Legacy）
+- [x] `invokeViaGateway()` — Gateway 流程编排
+- [x] `pollGatewayStatus()` — 状态轮询 fallback
+- [x] 5 个 Gateway 单元测试
+
+#### 9.5 Provider 简化
+- [x] 移除所有钱包/加密/claim 逻辑
+- [x] 路由简化：`POST / { text } → { result }`（200 行 → 19 行）
+- [x] 移除 viem、@noble/ciphers 依赖
+- [x] 重写 6 个测试
+
+#### 9.6 Agent 简化
+- [x] 2 个工具 → 1 个工具 (`call_service`)
+- [x] Gemini 系统指令精简
+- [x] `neurostream.ts` 使用 `client.callService()`
+
+#### 9.7 配置更新
+- [x] `.env.example` 新增 Gateway 变量
+- [x] `turbo.json` globalPassThroughEnv 更新
+- [x] Agent `.env.example` 新增 `NEUROSTREAM_GATEWAY_URL`
+- [x] Provider `.env.example` 精简
+
+**验证**：全流程测试通过，62 测试全部通过
+
+**Commit**: `f88cf68 feat: add Payment Gateway for simplified Provider/Agent integration`
+
+---
+
 ## Git 提交规范
 
 ### Commit Message 格式

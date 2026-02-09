@@ -1,38 +1,45 @@
 # NeuroStream
 
-**Agent-native 付费与结算协议层。** 让 AI Agent 在运行时自动发现服务、执行链上付费、获取加密内容——全程无需信任，密码学保障交付。
+**Agent-native 付费与结算协议层。** 让 AI Agent 在运行时自动发现服务、通过 Payment Gateway 执行链上付费、获取服务结果——平台担保交付，Escrow 保障资金安全。
 
-> NeuroStream 通过 Escrow + Hashlock/Timelock 将资金释放与内容交付强绑定，彻底消除 Agent 自动付费时"付了钱拿不到结果"的风险。
+> NeuroStream 通过 Payment Gateway + Escrow 合约将资金释放与内容交付强绑定。Agent 付费即交付、不交付即退款。Provider 只需提供普通 HTTP API，零区块链集成门槛。
 
 ## 解决的问题
 
-AI Agent 在运行时调用外部付费服务，传统支付流程依赖信任——付款后无法保证收到合法结果。NeuroStream 用链上 Escrow + 密码学证明替代信任，实现**付费即交付、不交付即退款**。
+AI Agent 在运行时调用外部付费服务，传统支付流程依赖信任——付款后无法保证收到合法结果。NeuroStream 用 **Payment Gateway + 链上 Escrow** 替代信任：
 
-## 协议流程
+- **Agent 保护** — 资金锁定在 Escrow 合约中，未交付则超时自动退款
+- **Provider 保护** — 结果先持久化到数据库，再执行链上 claim，恢复任务自动重试
+- **零门槛接入** — Provider 只需提供普通 HTTP API，无需钱包/私钥/区块链集成
+
+## 协议流程（v3 — Gateway 架构）
 
 ```mermaid
 sequenceDiagram
     participant Agent
+    participant Gateway as Gateway (Next.js)
     participant Provider
     participant Escrow
 
-    Agent->>Provider: 1. 请求服务
-    Provider-->>Agent: 2. 返回 402 + 价格 + hashLock(H)
-    Agent->>Escrow: 3. open(requestId, provider, amount, H, deadline)
-    Agent->>Provider: 4. 携带 requestId 再次请求（付款证明）
-    Provider-->>Agent: 5. 返回加密结果（ciphertext）
-    Provider->>Escrow: 6. claim(requestId, preimage k) — 解密密钥上链公开
-    Escrow-->>Provider: 7. 释放资金
-    Agent->>Agent: 8. Decrypt(ciphertext, k) → 明文结果
+    Agent->>Gateway: 1. POST /invoke { serviceId, params }
+    Gateway-->>Agent: 2. 402 { requestId, hashLock, amount, recipient, deadline }
+    Agent->>Escrow: 3. open(requestId, recipient=Gateway, amount, hashLock, deadline)
+    Agent->>Gateway: 4. POST /invoke { serviceId, params, requestId }
+    Gateway->>Provider: 5. 转发 HTTP 请求
+    Provider-->>Gateway: 6. 返回结果（明文）
+    Gateway->>Gateway: 7. 持久化结果到数据库
+    Gateway->>Escrow: 8. claim(requestId, preimage) — 领取资金
+    Gateway-->>Agent: 9. 200 { result, requestId }
 
-    Note over Agent,Escrow: 若 Provider 未在 deadline 前 claim → Agent 调用 refund() 取回资金
+    Note over Agent,Escrow: 若 Gateway 未在 deadline 前 claim → Agent 调用 refund() 取回资金
+    Note over Gateway: 恢复任务每 30s 自动处理卡住的请求
 ```
 
 **核心保障：**
 
-- **Agent 保护** — 资金锁定在 Escrow 合约中，不直接发送给 Provider。未交付则超时自动退款。
-- **Provider 保护** — Provider 一旦上链公开 preimage（解密密钥），资金原子性释放，不可逆。
-- **零信任** — Hashlock 机制确保付费与交付密码学绑定，双方均无法作弊。
+- **Agent 不变量 (G1)** — 如果 Agent 锁定了资金，必须得到结果 **或者** 能在 deadline 后退款
+- **Provider 不变量 (G2)** — 如果 Provider 返回了结果且已持久化，Provider 最终一定会被支付
+- **状态机驱动** — 9 个状态、每步先写 DB 再执行外部操作、恢复任务自动推进卡住的请求
 
 ## 技术栈
 
@@ -40,9 +47,10 @@ sequenceDiagram
 |------|------|------|
 | 智能合约 | Solidity + Hardhat | Escrow（Hashlock/Timelock） |
 | 目标链 | Monad Testnet | 10,000+ TPS，1 秒确定性 |
-| SDK | TypeScript（Viem） | Agent 端付费流程编排 |
+| Payment Gateway | Next.js API Route | 中转付费、调用 Provider、claim 领款、故障恢复 |
+| SDK | TypeScript（Viem） | Agent 端一行代码调用服务 |
 | 索引器 | viem + Supabase 轮询索引器 | 链上事件索引至 PostgreSQL |
-| 后端 | Supabase（Edge Functions + PostgreSQL） | 服务注册、质量指标 |
+| 后端 | Supabase（Edge Functions + PostgreSQL） | 服务注册、API Key、质量指标 |
 | 前端 | Next.js + Privy + Wagmi + shadcn/ui | Provider 管理面板 & Agent 控制台 |
 
 ## 项目结构
@@ -50,17 +58,19 @@ sequenceDiagram
 ```
 packages/
   contracts/     Escrow 智能合约（Solidity + Hardhat，18 个测试）
-  sdk/           TypeScript SDK，Agent 开发者使用（26 个测试）
+  sdk/           TypeScript SDK，Agent 开发者使用（31 个测试）
   indexer/       viem + Supabase 链上事件轮询索引器（7 个测试）
 apps/
-  frontend/      Next.js DApp — 服务发现、Agent 与 Provider 面板
-  provider/      Provider API 服务，含 402 挑战流程（5 个测试）
+  frontend/      Next.js DApp + Payment Gateway API Route
+  provider/      Provider API 服务，纯 HTTP 接口（6 个测试）
   agent/         AI Agent CLI — Gemini + NeuroStream 自主付费对话
   backend/       Supabase Edge Functions + 数据库迁移
 scripts/
-  demo-flow.ts       本地演示（Hardhat 节点）
-  demo-api-flow.ts   API 演示
-  db-migrate.ts      数据库迁移脚本
+  db-reset.ts    数据库重置脚本
+  db-seed.ts     数据库种子数据脚本
+  demo-agent.ts  Agent 演示脚本
+docs/
+  full-flow-test.md  全流程测试指南（v3 Gateway）
 ```
 
 ## 快速开始
@@ -79,8 +89,6 @@ pnpm install
 ```
 
 ### 2. 部署合约（本地开发）
-
-Indexer 和 Provider 都依赖合约地址，因此需要先部署合约：
 
 ```bash
 # 终端 1：启动本地 Hardhat 节点
@@ -109,8 +117,6 @@ cd packages/contracts && npx hardhat run scripts/deploy.ts --network localhost
 | `.env.production` | **是** | 生产环境模板（空占位符） |
 | `.env.example` | **是** | 完整变量参考文档 |
 | `.env.local` | 否 | 本地敏感信息（私钥、API Key） |
-| `.env.development.local` | 否 | 开发环境本地覆盖 |
-| `.env.production.local` | 否 | 生产环境本地覆盖 |
 
 **快速开始：**
 
@@ -120,22 +126,22 @@ cp .env.example .env.local
 
 将上一步获得的合约地址填入 `ESCROW_CONTRACT_ADDRESS`，其余变量按需填写：
 
-| 变量 | 必填 | 说明 |
-|------|:----:|------|
-| `ESCROW_CONTRACT_ADDRESS` | **是** | 已部署的 Escrow 合约地址（本地开发必填） |
-| `MONAD_RPC_URL` | 否 | Monad Testnet RPC 地址（部署到测试网时需要） |
-| `DEPLOYER_PRIVATE_KEY` | 否 | 部署钱包私钥（部署到测试网时需要） |
-| `PROVIDER_WALLET_ADDRESS` | 否 | Provider 钱包地址 |
-| `PROVIDER_PRIVATE_KEY` | 否 | Provider 钱包私钥 |
-| `SUPABASE_URL` | 否 | Supabase 项目 URL |
-| `SUPABASE_ANON_KEY` | 否 | Supabase 匿名密钥 |
-| `SUPABASE_SERVICE_ROLE_KEY` | 否 | Supabase Service Role 密钥 |
-| `SUPABASE_DB_URL` | 否 | Supabase PostgreSQL 连接串（运行迁移时需要） |
-| `PRIVY_APP_ID` | 否 | Privy 应用 ID |
-| `PRIVY_APP_SECRET` | 否 | Privy 应用密钥 |
-| `GEMINI_API_KEY` | 否 | Google Gemini API Key（Agent CLI 需要） |
-| `NEUROSTREAM_API_URL` | 否 | NeuroStream Edge Functions URL |
-| `NEUROSTREAM_API_KEY` | 否 | NeuroStream API Key（SDK 认证） |
+| 变量 | 分类 | 必填 | 说明 |
+|------|------|:----:|------|
+| `ESCROW_CONTRACT_ADDRESS` | 区块链 | **是** | 已部署的 Escrow 合约地址 |
+| `MONAD_RPC_URL` | 区块链 | 否 | RPC 地址（默认 `http://127.0.0.1:8545`） |
+| `GATEWAY_PRIVATE_KEY` | Gateway | **是** | Gateway 钱包私钥（开发用 Hardhat Account #3） |
+| `GATEWAY_WALLET_ADDRESS` | Gateway | **是** | Gateway 钱包地址 |
+| `NEUROSTREAM_GATEWAY_URL` | Gateway | 否 | Gateway URL（默认 `http://localhost:3000`） |
+| `NEUROSTREAM_API_URL` | SDK | 否 | Edge Functions 基地址 |
+| `NEUROSTREAM_API_KEY` | SDK | 否 | API Key（从 Agent 面板生成） |
+| `SUPABASE_URL` | 后端 | 否 | Supabase 项目 URL |
+| `SUPABASE_ANON_KEY` | 后端 | 否 | Supabase 匿名密钥 |
+| `SUPABASE_SERVICE_ROLE_KEY` | 后端 | 否 | Supabase Service Role 密钥 |
+| `SUPABASE_DB_URL` | 后端 | 否 | PostgreSQL 连接串（迁移用） |
+| `PRIVY_APP_ID` | 认证 | 否 | Privy 应用 ID |
+| `PRIVY_APP_SECRET` | 认证 | 否 | Privy 应用密钥 |
+| `GEMINI_API_KEY` | Agent | 否 | Google Gemini API Key |
 
 ### 4. 启动开发服务
 
@@ -148,10 +154,10 @@ pnpm dev
 
 ```bash
 pnpm dev          # 启动所有服务（Turborepo）
-pnpm test         # 运行全部测试（共 54 个）
+pnpm test         # 运行全部测试（共 62 个）
 pnpm build        # 构建所有包
-pnpm demo         # 运行本地 Demo（需先完成上述步骤 2-3）
-pnpm db:migrate   # 执行 Supabase 数据库迁移（需要 DATABASE_URL）
+pnpm db:reset     # 重置 Supabase 数据库
+pnpm db:migrate   # 执行 Supabase 数据库迁移
 ```
 
 ## SDK 使用示例
@@ -159,47 +165,44 @@ pnpm db:migrate   # 执行 Supabase 数据库迁移（需要 DATABASE_URL）
 ```typescript
 import { NeuroStream } from '@neurostream/sdk';
 
+// v3 Gateway 模式（推荐）
 const client = new NeuroStream({
-  apiKey: 'ns_live_xxxx',    // 平台注册后获取
-  privateKey: '0x...',       // Privy 导出的钱包私钥
+  apiKey: 'ns_live_xxxx',          // 平台注册后获取
+  privateKey: '0x...',             // Privy 导出的钱包私钥
+  gatewayUrl: 'http://localhost:3000', // Gateway URL
 });
 
-// Layer 1: 自动发现 + 选最优 + 自动付费调用
+// 一行代码调用服务（自动发现 + Gateway 付费 + 获取结果）
 const { result } = await client.callService({
   keyword: 'text-analysis',
   params: { text: 'Hello world' },
 });
 
-// Layer 2: 指定 serviceId + 自动付费调用
+// 指定 serviceId 调用
 const { result: r2 } = await client.callService({
   serviceId: 'text-analysis-v1',
   params: { text: 'Hello world' },
 });
-
-// Layer 3: 直接传 endpoint（高级用户）
-const { result: r3, requestId } = await client.invokeService(
-  'https://provider.example.com/invoke',
-  { text: 'Hello world' }
-);
 ```
 
-SDK 自动编排完整流程：获取付费挑战（402）→ Escrow 锁款 → 接收加密内容 → 监听链上 claim → 解密返回。
+**Gateway 模式流程**：SDK 自动编排 POST invoke → 402 挑战 → Escrow 锁款 → POST invoke（带 requestId）→ Gateway 调用 Provider → claim → 返回明文结果。
+
+**Legacy 模式**：不设置 `gatewayUrl` 则走旧的直连 Provider 流程（需 Provider 实现 402 + 加密 + claim）。
 
 ## AI Agent CLI
 
 `apps/agent/` 是一个完整的 AI Agent 应用：使用 Gemini 作为大脑，NeuroStream SDK 作为付费工具，通过终端交互式对话演示"AI Agent 自主付费调用链上服务"。
 
 ```
-User 输入 → NeuroStream invokeService（链上 Escrow 付费） → Gemini 生成回复 → 终端显示
+User 输入 → Gemini 判断是否需要调用服务 → SDK callService（Gateway 付费） → Gemini 生成回复
 ```
 
 ### 启动 Agent
 
 ```bash
-# 1. 确保 .env.local 中配置了 GEMINI_API_KEY 和 ESCROW_CONTRACT_ADDRESS
-# 2. Hardhat 节点运行中，合约已部署，Provider 服务运行中
-# 3. 启动（pnpm dev 会自动启动所有 apps，包括 agent）
-pnpm dev
+# 1. 确保 .env 中配置了 GEMINI_API_KEY、NEUROSTREAM_API_KEY、NEUROSTREAM_GATEWAY_URL
+# 2. Hardhat 节点运行中，合约已部署，Provider + Gateway 运行中
+cd apps/agent && pnpm dev
 ```
 
 ### Agent 命令
@@ -209,12 +212,13 @@ pnpm dev
 | `/help` | 显示帮助信息 |
 | `/balance` | 查看当前钱包余额 |
 | `/quit` | 退出 Agent |
-| 任意文本 | 付费调用 NeuroStream → Gemini 生成回复 |
+| 普通文本 | Gemini 决定是否调用 NeuroStream 服务 |
+| 含服务关键词 | 自动调用匹配的 NeuroStream 服务，付费获取结果 |
 
-每次用户输入，Agent 自动完成：
-1. 调用 NeuroStream `invokeService()`（5 步 Escrow 流程，支付 0.001 ETH）
-2. 将链上服务返回的结果传给 Gemini，生成智能回复
-3. 在终端显示付款信息（requestId、费用、延迟）+ AI 回复
+每次服务调用，Agent 自动完成：
+1. Gemini 判断需要调用服务 → SDK `callService()`
+2. Gateway 流程：402 挑战 → Escrow 锁款 → Provider 调用 → claim → 返回结果
+3. 在终端显示付款信息（requestId、费用、延迟）+ Gemini 生成的智能回复
 
 ## 智能合约
 
@@ -223,14 +227,38 @@ pnpm dev
 | 函数 | 说明 |
 |------|------|
 | `open(requestId, provider, hashLock, deadline)` | 锁定资金。Agent 调用。 |
-| `claim(requestId, preimage)` | 提交 preimage 领取资金。Provider 调用。 |
+| `claim(requestId, preimage)` | 提交 preimage 领取资金。**Gateway** 调用（v3）。 |
 | `refund(requestId)` | 超时退款。Provider 未交付时 Agent 调用。 |
 
 链上事件（`PaymentLocked`、`PaymentReleased`、`PaymentRefunded`）作为可验证收据，由 viem 轮询索引器实时索引至 Supabase `payments` 表供查询。
 
+## Payment Gateway
+
+Gateway 是 Next.js API Route，运行在 `apps/frontend/src/app/api/gateway/`。
+
+**核心职责**：
+- 生成付费挑战（preimage/hashLock）
+- 验证链上 Escrow 锁定
+- 转发请求到 Provider
+- 持久化结果到数据库
+- 执行链上 claim 领款
+- 故障恢复（每 30s 自动处理卡住的请求）
+
+**状态机**：
+
+```
+CREATED → ESCROW_LOCKED → PROVIDER_CALLED → RESULT_STORED → CLAIMED → COMPLETED
+    ↓           ↓               ↓                ↓              ↓
+  FAILED    REFUNDABLE      REFUNDABLE       REFUNDABLE     COMPLETED
+```
+
+**API 端点**：
+- `POST /api/gateway/invoke` — 发起/继续服务调用
+- `GET /api/gateway/status?requestId=xxx` — 查询请求状态
+
 ## 索引器
 
-`packages/indexer/` 是一个轻量级链上事件索引服务，替代了原来的 Envio HyperIndex。
+`packages/indexer/` 是一个轻量级链上事件索引服务。
 
 **架构**：使用 viem `getLogs` 按区块轮询 Escrow 合约事件，解析后写入 Supabase PostgreSQL。
 
@@ -240,34 +268,19 @@ pnpm dev
 | `indexer_state` 表 | 区块游标（单行），崩溃恢复用 |
 | 轮询间隔 | 默认 3 秒，可通过 `INDEXER_POLL_INTERVAL_MS` 配置 |
 
-**单独启动索引器**：
-
-```bash
-# 需要设置 MONAD_RPC_URL, ESCROW_CONTRACT_ADDRESS, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
-cd packages/indexer && pnpm start
-```
-
-**数据库迁移**：
-
-```bash
-# 需要在 .env.local 中配置 SUPABASE_DB_URL
-# 从 Supabase Dashboard → Settings → Database → Connection string → URI 复制
-pnpm db:migrate
-```
-
 ## 测试
 
 ```bash
-# 全部测试（共 57 个）
+# 全部测试（共 62 个）
 pnpm test
 
 # 仅合约测试（18 个）
 cd packages/contracts && npx hardhat test
 
-# 仅 SDK 测试（26 个）
+# 仅 SDK 测试（31 个，含 Gateway 测试）
 cd packages/sdk && pnpm test
 
-# 仅 Provider 测试（5 个）
+# 仅 Provider 测试（6 个）
 cd apps/provider && pnpm test
 
 # 仅 Indexer 测试（7 个）
@@ -277,6 +290,45 @@ cd packages/indexer && pnpm test
 cd e2e && pnpm test
 ```
 
+## 数据流总结（v3 — Gateway 架构）
+
+```
+                           ┌──────────────────────┐
+                           │   Frontend + Gateway  │
+                           │     (Next.js :3000)   │
+                           └──┬───────┬────────┬───┘
+                     注册服务 │       │        │ Gateway API
+                              ▼       │        │ /api/gateway/*
+                        ┌─────────┐   │        │
+                        │Supabase │   │        │
+                        │services │   │        │
+                        │api_keys │   │        │
+                        │gateway_ │   │        │
+                        │challenges│  │        │
+                        └────▲────┘   │        │
+                             │        │        │
+           发现服务/上报指标  │ 生成Key │        │ 调用 Provider
+         ┌───────────────────┤        │        │ 存结果 + claim
+         │                   │        │        │
+    ┌────┴─────┐      ┌─────┴─────┐  │   ┌────▼─────┐
+    │  Agent   │      │  Indexer  │  │   │ Provider │
+    │  (CLI)   │      │ (viem →   │  │   │ (Express)│
+    │          │      │ Supabase) │  │   │  :3001   │
+    └────┬─────┘      └─────▲─────┘  │   └──────────┘
+         │                  │        │    纯 HTTP API
+         │ 请求 Gateway     │        │    无需钱包！
+         │ 链上锁定 escrow   │        │
+         │                  │        │
+         └──────────────────┴────────┘
+                     ▲
+                     │
+              ┌──────┴──────┐
+              │  Hardhat    │
+              │  (本地链)   │
+              │  :8545      │
+              └─────────────┘
+```
+
 ## 文档
 
 - [产品需求文档](memory-bank/prd.md)
@@ -284,6 +336,7 @@ cd e2e && pnpm test
 - [实施计划](memory-bank/implementation-plan.md)
 - [技术栈](memory-bank/tech-stack.md)
 - [开发进度](memory-bank/progress.md)
+- [全流程测试指南](docs/full-flow-test.md)
 
 ## License
 

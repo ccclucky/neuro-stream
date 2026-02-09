@@ -182,12 +182,42 @@ event PaymentReleased(
 
 ## 🔄 5. 核心流程（端到端）
 
+### v3 — Gateway 架构（当前）
+
+```mermaid
+sequenceDiagram
+    participant Agent
+    participant Gateway as Gateway (Next.js)
+    participant Provider
+    participant Escrow
+
+    Agent->>Gateway: 1. POST /invoke { serviceId, params }
+    Gateway-->>Agent: 2. 402 { requestId, hashLock, amount, recipient, deadline }
+    Agent->>Escrow: 3. open(requestId, recipient=Gateway, amount, hashLock, deadline)
+    Agent->>Gateway: 4. POST /invoke { serviceId, params, requestId }
+    Gateway->>Provider: 5. 转发 HTTP 请求（明文）
+    Provider-->>Gateway: 6. 返回结果（明文）
+    Gateway->>Gateway: 7. 持久化结果到 DB
+    Gateway->>Escrow: 8. claim(requestId, preimage)
+    Gateway-->>Agent: 9. 200 { result, requestId }
+
+    Note over Agent,Escrow: 若 Gateway 未在 deadline 前 claim → Agent refund()
+    Note over Gateway: 恢复任务每 30s 自动处理卡住的请求
+```
+
+**v3 核心变化**：
+- Gateway 作为可信中介（类似支付宝/PayPal），承担所有加密/支付/claim 逻辑
+- Provider 只需提供普通 HTTP API，零区块链集成门槛
+- Agent 只需一个工具 `call_service`，SDK 自动编排完整流程
+- 9 状态机驱动，写前执行原则，恢复任务自动重试
+
+### Legacy — 直连模式（保留兼容）
+
 ```mermaid
 sequenceDiagram
     participant Agent
     participant Provider
     participant Escrow
-    participant Chain
 
     Agent->>Provider: invoke(serviceId)
     Provider-->>Agent: 402 + price + hashLock H
@@ -302,7 +332,9 @@ qualityScore > successRate > lower price > avgLatency
 | 设计点                    | 取舍理由          |
 | ---------------------- | ------------- |
 | 先 Escrow 锁款再交付 vs 直接支付 | 解决付费无返结果风险    |
-| 加密交付 + Hashlock        | 资金与交付强绑定      |
+| Gateway 中介模式 vs 直连 Provider | 降低 Provider 接入门槛至零（v3）|
+| 状态机 + 写前执行 + 恢复任务 | CAP-CP，崩溃可恢复，资金安全 |
+| 加密交付 + Hashlock（Legacy）| 资金与交付强绑定      |
 | 自动化、无账户体系              | 最大化 Agent 可用性 |
 | 自动质量指标                 | 替代传统星级评价      |
 | 链上 Receipt             | 确保可审计证明       |
@@ -331,12 +363,15 @@ qualityScore > successRate > lower price > avgLatency
 
 | 验收点                 | 验证方式                    |
 | ------------------- | ----------------------- |
-| 402 Challenge 输出    | 402 + price + hashLock  |
+| Gateway 402 Challenge | 402 + requestId + hashLock + amount + recipient + deadline |
 | Escrow Lock         | `PaymentLocked` event   |
-| Provider ciphertext | ciphertext 可被 Agent 获取  |
-| Provider claim      | `PaymentReleased` event |
-| Agent 成功解密          | 明文输出可验证                 |
+| Gateway 转发 Provider  | Provider 收到 HTTP 请求，返回明文结果 |
+| 结果持久化              | `gateway_challenges` 表 status = RESULT_STORED |
+| Gateway claim       | `PaymentReleased` event + claim_tx_hash |
+| Agent 收到结果          | 200 + { result, requestId } |
+| 恢复任务               | 卡住请求 30s 后自动推进 |
 | 超时 refund           | `PaymentRefunded` event |
+| 质量指标更新              | metrics 表反映 success_rate, avg_latency |
 
 ---
 
