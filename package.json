@@ -16,11 +16,13 @@
     "deploy:local": "dotenv -c development -- pnpm --filter @neurostream/contracts deploy:local",
     "deploy:monad:testnet": "dotenv -c production -- pnpm --filter @neurostream/contracts deploy:monad",
     "supabase:login": "supabase login",
-    "supabase:link": "supabase link --project-ref uppsdjgmgfwbknbzvhby",
-    "supabase:deploy": "supabase functions deploy --project-ref uppsdjgmgfwbknbzvhby --workdir apps/backend --no-verify-jwt",
-    "supabase:deploy:services": "supabase functions deploy services --project-ref uppsdjgmgfwbknbzvhby --workdir apps/backend --no-verify-jwt",
-    "supabase:deploy:metrics": "supabase functions deploy metrics --project-ref uppsdjgmgfwbknbzvhby --workdir apps/backend --no-verify-jwt",
-    "supabase:deploy:api-keys": "supabase functions deploy api-keys --project-ref uppsdjgmgfwbknbzvhby --workdir apps/backend --no-verify-jwt"
+    "supabase:link": "dotenv -c development -- sh -c 'supabase link --project-ref $SUPABASE_PROJECT_REF'",
+    "supabase:deploy": "dotenv -c development -- sh -c 'supabase functions deploy --project-ref $SUPABASE_PROJECT_REF --workdir apps/backend --no-verify-jwt'",
+    "supabase:deploy:services": "dotenv -c development -- sh -c 'supabase functions deploy services --project-ref $SUPABASE_PROJECT_REF --workdir apps/backend --no-verify-jwt'",
+    "supabase:deploy:metrics": "dotenv -c development -- sh -c 'supabase functions deploy metrics --project-ref $SUPABASE_PROJECT_REF --workdir apps/backend --no-verify-jwt'",
+    "supabase:deploy:api-keys": "dotenv -c development -- sh -c 'supabase functions deploy api-keys --project-ref $SUPABASE_PROJECT_REF --workdir apps/backend --no-verify-jwt'",
+    "supabase:link:prod": "dotenv -c production -- sh -c 'supabase link --project-ref $SUPABASE_PROJECT_REF'",
+    "supabase:deploy:prod": "dotenv -c production -- sh -c 'supabase functions deploy --project-ref $SUPABASE_PROJECT_REF --workdir apps/backend --no-verify-jwt'"
   },
   "devDependencies": {
     "@typescript-eslint/eslint-plugin": "^6.19.1",
