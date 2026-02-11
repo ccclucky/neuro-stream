@@ -27,6 +27,7 @@ import { NeuroStream } from '../packages/sdk/src/client.js';
 const ESCROW_ADDRESS = (process.env.ESCROW_CONTRACT_ADDRESS ||
   '0x5fbdb2315678afecb367f032d93f642f64180aa3') as `0x${string}`;
 const RPC_URL = process.env.MONAD_RPC_URL || 'http://127.0.0.1:8545';
+const CHAIN_ID = Number(process.env.CHAIN_ID || '31337');
 const PROVIDER_API = process.env.PROVIDER_API_URL || 'http://localhost:3001';
 const API_URL = process.env.NEUROSTREAM_API_URL || 'https://uppsdjgmgfwbknbzvhby.supabase.co/functions/v1';
 const API_KEY = process.env.NEUROSTREAM_API_KEY || 'ns_live_dev_placeholder';
@@ -62,7 +63,7 @@ async function main() {
     apiUrl: API_URL,
     rpcUrl: RPC_URL,
     escrowAddress: ESCROW_ADDRESS,
-    chainId: 31337,
+    chainId: CHAIN_ID,
   });
 
   console.log('\n  Configuration:');

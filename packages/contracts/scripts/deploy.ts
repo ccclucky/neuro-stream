@@ -1,7 +1,14 @@
 import { ethers } from 'hardhat';
 
 async function main() {
-  const [deployer] = await ethers.getSigners();
+  const signers = await ethers.getSigners();
+  if (signers.length === 0) {
+    throw new Error(
+      'No signers available. Set DEPLOYER_PRIVATE_KEY in your .env.production file.'
+    );
+  }
+
+  const [deployer] = signers;
   console.log('Deploying Escrow with account:', deployer.address);
 
   const balance = await ethers.provider.getBalance(deployer.address);

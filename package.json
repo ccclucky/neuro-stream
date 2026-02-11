@@ -13,6 +13,8 @@
     "db:migrate": "dotenv -c development -- tsx scripts/db-migrate.ts",
     "db:reset": "dotenv -c development -- tsx scripts/db-reset.ts",
     "db:seed": "dotenv -c development -- tsx scripts/db-seed.ts",
+    "deploy:local": "dotenv -c development -- pnpm --filter @neurostream/contracts deploy:local",
+    "deploy:monad:testnet": "dotenv -c production -- pnpm --filter @neurostream/contracts deploy:monad",
     "supabase:login": "supabase login",
     "supabase:link": "supabase link --project-ref uppsdjgmgfwbknbzvhby",
     "supabase:deploy": "supabase functions deploy --project-ref uppsdjgmgfwbknbzvhby --workdir apps/backend --no-verify-jwt",

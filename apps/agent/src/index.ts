@@ -14,6 +14,7 @@ const NEUROSTREAM_API_KEY = process.env.NEUROSTREAM_API_KEY;
 const PRIVATE_KEY = process.env.NEUROSTREAM_PRIVATE_KEY as `0x${string}` | undefined;
 const ESCROW_ADDRESS = process.env.ESCROW_CONTRACT_ADDRESS as `0x${string}` | undefined;
 const RPC_URL = process.env.MONAD_RPC_URL || 'http://127.0.0.1:8545';
+const CHAIN_ID = Number(process.env.CHAIN_ID || '31337');
 
 const missing = [
   !GEMINI_API_KEY && 'GEMINI_API_KEY',
@@ -34,7 +35,7 @@ const client = new NeuroStream({
   privateKey: PRIVATE_KEY!,
   rpcUrl: RPC_URL,
   escrowAddress: ESCROW_ADDRESS!,
-  chainId: 31337,
+  chainId: CHAIN_ID,
 });
 
 const ai = createGeminiClient(GEMINI_API_KEY!);
