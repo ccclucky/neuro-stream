@@ -4,7 +4,6 @@ import {
   http,
   keccak256,
   toHex,
-  parseEther,
   type Chain,
 } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
