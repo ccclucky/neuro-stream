@@ -37,6 +37,13 @@ function shortenHex(hex: string, chars = 6): string {
   return `${hex.slice(0, chars + 2)}...${hex.slice(-chars)}`;
 }
 
+const serviceTypeColors: Record<string, string> = {
+  utility: 'bg-blue-50 text-blue-700 border-blue-200',
+  ai: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+  data: 'bg-green-50 text-green-700 border-green-200',
+  compute: 'bg-amber-50 text-amber-700 border-amber-200',
+};
+
 export default function ProviderPage() {
   const { login, authenticated, user } = usePrivy();
   const { wallets } = useWallets();
@@ -74,8 +81,6 @@ export default function ProviderPage() {
       setMyServices(services);
 
       // 2. Bridge to payments via call_logs (service_id → request_id)
-      //    payments.provider is the on-chain PROVIDER_WALLET_ADDRESS which
-      //    differs from the Privy embedded wallet, so we look up through call_logs.
       const serviceIds = services.map((s) => s.service_id);
       console.log('[Provider] services:', serviceIds);
 
@@ -188,32 +193,87 @@ export default function ProviderPage() {
 
   if (!authenticated) {
     return (
-      <div className="max-w-2xl mx-auto text-center py-16">
-        <h1 className="text-3xl font-bold text-gray-900 mb-4">Provider Panel</h1>
-        <p className="text-gray-500 mb-8">
-          Login to register services and claim payments.
-        </p>
-        <button
-          onClick={login}
-          className="bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-3 rounded-lg text-lg font-medium"
-        >
-          Login to Get Started
-        </button>
+      <div className="max-w-2xl mx-auto">
+        <div className="card rounded-2xl p-12 text-center">
+          <div className="w-16 h-16 rounded-xl bg-gray-100 flex items-center justify-center mx-auto mb-6">
+            <svg
+              className="w-8 h-8 text-gray-600"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"
+              />
+            </svg>
+          </div>
+          <h1 className="text-3xl font-semibold text-gray-900 mb-4">
+            Provider Panel
+          </h1>
+          <p className="text-gray-500 mb-8 max-w-md mx-auto">
+            Login to register services, manage your offerings, and claim payments from agents.
+          </p>
+          <button onClick={login} className="btn-primary">
+            Connect Wallet
+          </button>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="max-w-4xl mx-auto">
-      <h1 className="text-3xl font-bold text-gray-900 mb-8">Provider Panel</h1>
+    <div className="max-w-5xl mx-auto space-y-6">
+      {/* Header */}
+      <div className="flex items-center gap-3 mb-2">
+        <div className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center">
+          <svg
+            className="w-5 h-5 text-gray-600"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"
+            />
+          </svg>
+        </div>
+        <div>
+          <h1 className="text-2xl font-semibold text-gray-900">
+            Provider Panel
+          </h1>
+          <p className="text-sm text-gray-500">Register services and manage your revenue</p>
+        </div>
+      </div>
 
       {/* Wallet Info */}
-      <div className="bg-white rounded-xl shadow-sm border p-6 mb-6">
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">Wallet Information</h2>
-        <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <span className="text-gray-500">Address:</span>
-            <code className="text-sm bg-gray-100 px-3 py-1 rounded font-mono">
+      <div className="card rounded-2xl p-6">
+        <div className="flex items-center gap-4">
+          <div className="w-12 h-12 rounded-xl bg-gray-100 flex items-center justify-center">
+            <svg
+              className="w-6 h-6 text-gray-600"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"
+              />
+            </svg>
+          </div>
+          <div className="flex-1 min-w-0">
+            <h2 className="text-lg font-semibold text-gray-900 mb-1">
+              Wallet Information
+            </h2>
+            <code className="text-sm font-mono text-gray-700 bg-gray-100 px-3 py-1 rounded-lg truncate block w-fit">
               {walletAddress || 'No wallet found'}
             </code>
           </div>
@@ -224,81 +284,119 @@ export default function ProviderPage() {
       {embeddedAddress ? (
         <Deposit embeddedAddress={embeddedAddress} />
       ) : (
-        <div className="bg-yellow-50 rounded-xl border border-yellow-200 p-6 mb-6">
-          <h2 className="text-lg font-semibold text-yellow-800 mb-2">Creating Embedded Wallet...</h2>
-          <p className="text-yellow-700 text-sm">
-            Setting up your platform wallet. This only happens once.
-          </p>
+        <div className="card rounded-2xl p-6 border-amber-200 bg-amber-50">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 rounded-xl bg-amber-100 flex items-center justify-center">
+              <svg className="w-6 h-6 text-amber-600 animate-spin" fill="none" viewBox="0 0 24 24">
+                <circle
+                  className="opacity-25"
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="currentColor"
+                  strokeWidth="4"
+                ></circle>
+                <path
+                  className="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                ></path>
+              </svg>
+            </div>
+            <div>
+              <h2 className="text-lg font-semibold text-amber-800 mb-1">
+                Creating Embedded Wallet...
+              </h2>
+              <p className="text-amber-600 text-sm">
+                Setting up your platform wallet. This only happens once.
+              </p>
+            </div>
+          </div>
         </div>
       )}
 
       {/* Register Service */}
-      <div className="bg-white rounded-xl shadow-sm border p-6 mb-6">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold text-gray-900">Register New Service</h2>
-          <button
-            onClick={() => setShowRegisterForm(!showRegisterForm)}
-            className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-medium"
-          >
+      <div className="card rounded-2xl p-6">
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 rounded-xl bg-gray-100 flex items-center justify-center">
+              <svg
+                className="w-6 h-6 text-gray-600"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 6v6m0 0v6m0-6h6m-6 0H6"
+                />
+              </svg>
+            </div>
+            <div>
+              <h2 className="text-lg font-semibold text-gray-900">
+                Register New Service
+              </h2>
+              <p className="text-gray-500 text-sm">Add a new service to the marketplace</p>
+            </div>
+          </div>
+          <button onClick={() => setShowRegisterForm(!showRegisterForm)} className="btn-secondary">
             {showRegisterForm ? 'Cancel' : 'Register Service'}
           </button>
         </div>
 
         {showRegisterForm && (
-          <form onSubmit={handleRegister} className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Service ID
-              </label>
-              <input
-                type="text"
-                value={formData.serviceId}
-                onChange={(e) => setFormData({ ...formData, serviceId: e.target.value })}
-                placeholder="e.g., my-string-service"
-                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500"
-                required
-              />
+          <form onSubmit={handleRegister} className="space-y-5 pt-6 border-t border-gray-200">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+              <div>
+                <label className="block text-sm font-medium text-gray-900 mb-2">Service ID</label>
+                <input
+                  type="text"
+                  value={formData.serviceId}
+                  onChange={(e) => setFormData({ ...formData, serviceId: e.target.value })}
+                  placeholder="e.g., my-string-service"
+                  className="w-full bg-white border border-gray-200 rounded-xl px-4 py-3 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-slate-900 focus:ring-1 focus:ring-slate-900 transition-all"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-900 mb-2">Service Type</label>
+                <select
+                  value={formData.serviceType}
+                  onChange={(e) => setFormData({ ...formData, serviceType: e.target.value })}
+                  className="w-full bg-white border border-gray-200 rounded-xl px-4 py-3 text-gray-900 focus:outline-none focus:border-slate-900 focus:ring-1 focus:ring-slate-900 transition-all"
+                >
+                  <option value="utility">Utility</option>
+                  <option value="ai">AI</option>
+                  <option value="data">Data</option>
+                  <option value="compute">Compute</option>
+                </select>
+              </div>
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Service Type
-              </label>
-              <select
-                value={formData.serviceType}
-                onChange={(e) => setFormData({ ...formData, serviceType: e.target.value })}
-                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500"
-              >
-                <option value="utility">Utility</option>
-                <option value="ai">AI</option>
-                <option value="data">Data</option>
-                <option value="compute">Compute</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Endpoint URL
-              </label>
+              <label className="block text-sm font-medium text-gray-900 mb-2">Endpoint URL</label>
               <input
                 type="url"
                 value={formData.endpoint}
                 onChange={(e) => setFormData({ ...formData, endpoint: e.target.value })}
                 placeholder="https://your-service.com/invoke"
-                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500"
+                className="w-full bg-white border border-gray-200 rounded-xl px-4 py-3 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-slate-900 focus:ring-1 focus:ring-slate-900 transition-all"
                 required
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-gray-900 mb-2">
                 Price per Call (ETH)
               </label>
               <input
                 type="text"
                 value={formData.pricingAmount}
                 onChange={(e) => setFormData({ ...formData, pricingAmount: e.target.value })}
-                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500"
+                className="w-full bg-white border border-gray-200 rounded-xl px-4 py-3 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-slate-900 focus:ring-1 focus:ring-slate-900 transition-all"
                 required
               />
             </div>
@@ -306,40 +404,97 @@ export default function ProviderPage() {
             <button
               type="submit"
               disabled={registerLoading}
-              className="w-full bg-green-600 hover:bg-green-700 disabled:bg-green-400 text-white py-2 rounded-lg font-medium"
+              className="w-full btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {registerLoading ? 'Signing & Registering...' : 'Register Service'}
+              {registerLoading ? (
+                <span className="flex items-center justify-center gap-2">
+                  <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle
+                      className="opacity-25"
+                      cx="12"
+                      cy="12"
+                      r="10"
+                      stroke="currentColor"
+                      strokeWidth="4"
+                    ></circle>
+                    <path
+                      className="opacity-75"
+                      fill="currentColor"
+                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                    ></path>
+                  </svg>
+                  Signing & Registering...
+                </span>
+              ) : (
+                'Register Service'
+              )}
             </button>
           </form>
         )}
       </div>
 
       {/* My Services */}
-      <div className="bg-white rounded-xl shadow-sm border p-6 mb-6">
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">My Services</h2>
+      <div className="card rounded-2xl p-6">
+        <div className="flex items-center gap-4 mb-6">
+          <div className="w-12 h-12 rounded-xl bg-gray-100 flex items-center justify-center">
+            <svg
+              className="w-6 h-6 text-gray-600"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"
+              />
+            </svg>
+          </div>
+          <div>
+            <h2 className="text-lg font-semibold text-gray-900">
+              My Services
+            </h2>
+            <p className="text-gray-500 text-sm">Services you have registered</p>
+          </div>
+        </div>
+
         {dataLoading ? (
-          <div className="flex justify-center py-4">
-            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-indigo-600"></div>
+          <div className="flex justify-center py-8">
+            <div className="w-8 h-8 rounded-full border-2 border-slate-900 border-t-transparent animate-spin"></div>
           </div>
         ) : myServices.length === 0 ? (
-          <p className="text-gray-400 text-sm text-center py-4">
-            No services registered yet. Click &quot;Register Service&quot; to get started.
-          </p>
+          <div className="text-center py-8 border border-dashed border-gray-200 rounded-xl">
+            <p className="text-gray-500">
+              No services registered yet. Register your first service above.
+            </p>
+          </div>
         ) : (
           <div className="space-y-3">
             {myServices.map((s) => (
-              <div key={s.id} className="border rounded-lg p-4 flex justify-between items-center">
-                <div>
-                  <div className="font-medium text-gray-900">{s.service_id}</div>
-                  <div className="text-sm text-gray-500">
-                    {s.service_type} | {s.endpoint}
+              <div
+                key={s.id}
+                className="flex items-center justify-between rounded-xl p-4 bg-gray-50 border border-gray-200"
+              >
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-3 mb-1">
+                    <span className="font-semibold text-gray-900">
+                      {s.service_id}
+                    </span>
+                    <span
+                      className={`px-2 py-0.5 rounded-full text-xs font-medium border ${serviceTypeColors[s.service_type] || serviceTypeColors.utility}`}
+                    >
+                      {s.service_type}
+                    </span>
                   </div>
+                  <p className="text-sm text-gray-500 truncate">{s.endpoint}</p>
                 </div>
-                <div className="text-right">
-                  <div className="text-sm font-medium text-indigo-600">
-                    {s.pricing_amount} {s.pricing_asset}
+                <div className="text-right ml-4">
+                  <div className="text-lg font-bold text-gray-900">
+                    {s.pricing_amount}{' '}
+                    <span className="text-sm text-gray-500">{s.pricing_asset}</span>
                   </div>
-                  <div className="text-xs text-gray-400">per call</div>
+                  <div className="text-xs text-gray-500">per call</div>
                 </div>
               </div>
             ))}
@@ -348,32 +503,62 @@ export default function ProviderPage() {
       </div>
 
       {/* Pending Claims */}
-      <div className="bg-white rounded-xl shadow-sm border p-6 mb-6">
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">Pending Claims</h2>
+      <div className="card rounded-2xl p-6">
+        <div className="flex items-center gap-4 mb-6">
+          <div className="w-12 h-12 rounded-xl bg-gray-100 flex items-center justify-center">
+            <svg
+              className="w-6 h-6 text-gray-600"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+              />
+            </svg>
+          </div>
+          <div>
+            <h2 className="text-lg font-semibold text-gray-900">
+              Pending Claims
+            </h2>
+            <p className="text-gray-500 text-sm">Payments locked for your services</p>
+          </div>
+        </div>
+
         {dataLoading ? (
-          <div className="flex justify-center py-4">
-            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-indigo-600"></div>
+          <div className="flex justify-center py-8">
+            <div className="w-8 h-8 rounded-full border-2 border-slate-900 border-t-transparent animate-spin"></div>
           </div>
         ) : pendingClaims.length === 0 ? (
-          <p className="text-gray-400 text-sm text-center py-4">
-            No pending claims. Payments will appear here when Agents lock funds for your services.
-          </p>
+          <div className="text-center py-8 border border-dashed border-gray-200 rounded-xl">
+            <p className="text-gray-500">
+              No pending claims. Payments will appear here when agents lock funds.
+            </p>
+          </div>
         ) : (
           <div className="space-y-3">
             {pendingClaims.map((p) => (
-              <div key={p.request_id} className="border rounded-lg p-4 flex justify-between items-center">
-                <div>
-                  <div className="font-mono text-xs text-gray-700">{shortenHex(p.request_id)}</div>
-                  <div className="text-sm text-gray-500">
-                    From: {shortenHex(p.agent)}
-                  </div>
+              <div
+                key={p.request_id}
+                className="flex items-center justify-between rounded-xl p-4 bg-gray-50 border border-gray-200"
+              >
+                <div className="flex-1 min-w-0">
+                  <code className="text-sm font-mono text-gray-700 bg-gray-100 px-2 py-0.5 rounded block mb-1 w-fit">
+                    {shortenHex(p.request_id)}
+                  </code>
+                  <p className="text-sm text-gray-500">
+                    From: <span className="font-mono">{shortenHex(p.agent)}</span>
+                  </p>
                 </div>
-                <div className="text-right">
-                  <div className="text-sm font-medium text-yellow-700">
+                <div className="text-right ml-4">
+                  <div className="text-lg font-bold text-amber-600">
                     {weiToEth(p.amount)} ETH
                   </div>
-                  <div className="text-xs text-gray-400">
-                    Deadline: {new Date(Number(p.deadline) * 1000).toLocaleString()}
+                  <div className="text-xs text-gray-500">
+                    Deadline: {new Date(Number(p.deadline) * 1000).toLocaleDateString()}
                   </div>
                 </div>
               </div>
@@ -383,16 +568,43 @@ export default function ProviderPage() {
       </div>
 
       {/* Revenue Stats */}
-      <div className="bg-white rounded-xl shadow-sm border p-6">
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">Revenue Statistics</h2>
-        <div className="grid grid-cols-2 gap-4">
-          <div className="bg-gray-50 rounded-lg p-4 text-center">
-            <div className="text-2xl font-bold text-gray-900">{totalEarned} ETH</div>
-            <div className="text-sm text-gray-500">Total Earned</div>
+      <div className="card rounded-2xl p-6">
+        <div className="flex items-center gap-4 mb-6">
+          <div className="w-12 h-12 rounded-xl bg-gray-100 flex items-center justify-center">
+            <svg
+              className="w-6 h-6 text-gray-600"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+              />
+            </svg>
           </div>
-          <div className="bg-gray-50 rounded-lg p-4 text-center">
-            <div className="text-2xl font-bold text-gray-900">{totalCalls}</div>
-            <div className="text-sm text-gray-500">Total Calls Served</div>
+          <div>
+            <h2 className="text-lg font-semibold text-gray-900">
+              Revenue Statistics
+            </h2>
+            <p className="text-gray-500 text-sm">Your earnings from service calls</p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          <div className="card rounded-xl p-6 text-center">
+            <div className="text-3xl font-bold text-slate-900 mb-1">
+              {totalEarned}
+            </div>
+            <div className="text-sm text-gray-500 font-medium">ETH Total Earned</div>
+          </div>
+          <div className="card rounded-xl p-6 text-center">
+            <div className="text-3xl font-bold text-slate-900 mb-1">
+              {totalCalls}
+            </div>
+            <div className="text-sm text-gray-500 font-medium">Total Calls Served</div>
           </div>
         </div>
       </div>
