@@ -1,18 +1,25 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+
 /**
  * @title Escrow
- * @notice Escrow contract for NeuroStream Agent-to-Provider payments
- * @dev Uses hashlock mechanism to ensure atomic swap between payment and content delivery
+ * @notice ERC20-based escrow for NeuroStream Agent-to-Provider payments
+ * @dev Uses hashlock mechanism for atomic swap between payment and content delivery.
+ *      Payment token is set at deployment (immutable).
  *
  * Flow:
- * 1. Agent calls open() to lock funds with a hashLock H
- * 2. Provider delivers encrypted content
- * 3. Provider calls claim() with preimage k where hash(k) == H
- * 4. If provider doesn't claim before deadline, agent can refund()
+ * 1. Agent approves Escrow to spend `amount` of paymentToken
+ * 2. Agent calls open() to lock funds with a hashLock H
+ * 3. Provider delivers content
+ * 4. Provider calls claim() with preimage k where hash(k) == H
+ * 5. If provider doesn't claim before deadline, agent can refund()
  */
 contract Escrow {
+    using SafeERC20 for IERC20;
+
     // ============ Enums ============
 
     enum Status {
@@ -27,7 +34,7 @@ contract Escrow {
     struct Payment {
         address agent;      // Who locked the funds
         address provider;   // Who can claim the funds
-        uint256 amount;     // Amount locked
+        uint256 amount;     // Amount locked (in token smallest unit)
         bytes32 hashLock;   // keccak256(preimage) - provider must reveal preimage to claim
         uint64 deadline;    // After this time, agent can refund
         Status status;      // Current payment status
@@ -35,6 +42,7 @@ contract Escrow {
 
     // ============ State ============
 
+    IERC20 public immutable paymentToken;
     mapping(bytes32 => Payment) public payments;
 
     // ============ Events ============
@@ -73,24 +81,25 @@ contract Escrow {
     error NotAgent();
     error DeadlinePassed();
     error DeadlineNotPassed();
-    error TransferFailed();
+    error InvalidToken();
+
+    // ============ Constructor ============
+
+    constructor(IERC20 _paymentToken) {
+        if (address(_paymentToken) == address(0)) revert InvalidToken();
+        paymentToken = _paymentToken;
+    }
 
     // ============ External Functions ============
 
-    /**
-     * @notice Lock funds for a service request
-     * @param requestId Unique identifier for this payment
-     * @param provider Address that can claim the funds
-     * @param hashLock keccak256(preimage) - provider must know preimage to claim
-     * @param deadline Unix timestamp after which agent can refund
-     */
     function open(
         bytes32 requestId,
         address provider,
+        uint256 amount,
         bytes32 hashLock,
         uint64 deadline
-    ) external payable {
-        if (msg.value == 0) revert InvalidAmount();
+    ) external {
+        if (amount == 0) revert InvalidAmount();
         if (provider == address(0)) revert InvalidProvider();
         if (deadline <= block.timestamp) revert InvalidDeadline();
         if (payments[requestId].status != Status.None) revert PaymentExists();
@@ -98,27 +107,24 @@ contract Escrow {
         payments[requestId] = Payment({
             agent: msg.sender,
             provider: provider,
-            amount: msg.value,
+            amount: amount,
             hashLock: hashLock,
             deadline: deadline,
             status: Status.Locked
         });
 
+        paymentToken.safeTransferFrom(msg.sender, address(this), amount);
+
         emit PaymentLocked(
             requestId,
             msg.sender,
             provider,
-            msg.value,
+            amount,
             hashLock,
             deadline
         );
     }
 
-    /**
-     * @notice Claim locked funds by revealing the preimage
-     * @param requestId The payment to claim
-     * @param preimage The secret that hashes to the stored hashLock
-     */
     function claim(bytes32 requestId, bytes32 preimage) external {
         Payment storage payment = payments[requestId];
 
@@ -131,14 +137,9 @@ contract Escrow {
 
         emit PaymentReleased(requestId, payment.provider, payment.amount, preimage);
 
-        (bool success, ) = payment.provider.call{value: payment.amount}("");
-        if (!success) revert TransferFailed();
+        paymentToken.safeTransfer(payment.provider, payment.amount);
     }
 
-    /**
-     * @notice Refund locked funds after deadline has passed
-     * @param requestId The payment to refund
-     */
     function refund(bytes32 requestId) external {
         Payment storage payment = payments[requestId];
 
@@ -150,17 +151,9 @@ contract Escrow {
 
         emit PaymentRefunded(requestId, payment.agent, payment.amount);
 
-        (bool success, ) = payment.agent.call{value: payment.amount}("");
-        if (!success) revert TransferFailed();
+        paymentToken.safeTransfer(payment.agent, payment.amount);
     }
 
-    // ============ View Functions ============
-
-    /**
-     * @notice Get payment details
-     * @param requestId The payment to query
-     * @return Payment struct with all details
-     */
     function getPayment(bytes32 requestId) external view returns (Payment memory) {
         return payments[requestId];
     }

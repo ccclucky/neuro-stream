@@ -38,4 +38,4 @@ export type {
 } from './types';
 
 // ABI
-export { EscrowABI } from './abi';
+export { EscrowABI, ERC20ABI } from './abi';

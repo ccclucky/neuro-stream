@@ -79,16 +79,21 @@ graph TD
 *   **写前执行原则**：先写 DB 再执行链上/外部操作，确保崩溃后可恢复
 
 ### 3.2 Escrow Contract (Monad)
-*   负责资金锁定 (Lock) 与释放 (Claim)。
+*   **ERC20 代币支付**（v4）：使用 `IERC20 paymentToken`（构造函数参数，immutable），不再使用原生 ETH。
+*   部署时指定支付代币地址（本地用 MockERC20/6 decimals，主网用 USDC）。
+*   Agent 需先 `approve(escrow, amount)` 再调用 `open()`，合约通过 `safeTransferFrom` 拉取代币。
+*   `claim()` / `refund()` 通过 `safeTransfer` 转移代币。
 *   通过 `Hashlock` 确保交付后再打款。
 *   提供超时自动退款机制。
 *   **v3 变化**：`recipient` 改为 Gateway 地址（而非 Provider 地址）。
+*   **环境变量**：`PAYMENT_TOKEN_ADDRESS`（代币合约地址）、`PAYMENT_TOKEN_DECIMALS`（精度，USDC=6）。
 
 ### 3.3 NeuroStream SDK
 *   **v3 Gateway 模式**（推荐）：`gatewayUrl` 配置后，自动走 Gateway 流程
     1. POST /invoke → 402 挑战
-    2. Escrow.open()（Agent 锁款到 Gateway 地址）
+    2. ERC20 approve() → Escrow.open()（Agent 锁定代币到 Gateway 地址）
     3. POST /invoke + requestId → Gateway 调用 Provider → 返回结果
+*   **配置**：需要 `tokenAddress`（或 `PAYMENT_TOKEN_ADDRESS` 环境变量）
 *   **Legacy 模式**：不设 `gatewayUrl`，直连 Provider（需 Provider 实现 402 + 加密 + claim）
 *   单一入口：`callService({ keyword/serviceId, params })` 自动路由
 
@@ -122,7 +127,7 @@ graph TD
 ## 4. 关键流程：v3 Gateway 闭环
 
 1.  **挑战阶段**: Agent SDK POST /invoke → Gateway 返回 402 + { requestId, hashLock, amount, recipient, deadline }
-2.  **锁定阶段**: Agent 在链上调用 `Escrow.open(requestId, gateway, amount, hashLock, deadline)`
+2.  **锁定阶段**: Agent 先调用 `token.approve(escrow, amount)`，再调用 `Escrow.open(requestId, gateway, amount, hashLock, deadline)`
 3.  **调用阶段**: Agent SDK POST /invoke + requestId → Gateway 验证 Escrow → 转发到 Provider → 拿到结果
 4.  **持久化阶段**: Gateway 将 Provider 结果写入 `gateway_challenges.provider_result`
 5.  **结算阶段**: Gateway 调用 `Escrow.claim(requestId, preimage)` 领取资金

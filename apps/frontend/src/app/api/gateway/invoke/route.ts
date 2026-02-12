@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { parseEther } from 'viem';
+import { parseUnits } from 'viem';
 import {
   validateApiKey,
   lookupService,
@@ -79,7 +79,8 @@ export async function POST(req: NextRequest) {
       const hashLock = computeHashLock(preimage);
       const reqId = generateRequestId();
       const deadline = Math.floor(Date.now() / 1000) + DEADLINE_SECONDS;
-      const amount = parseEther(service.pricingAmount).toString();
+      const decimals = parseInt(process.env.PAYMENT_TOKEN_DECIMALS || '6', 10);
+      const amount = parseUnits(service.pricingAmount, decimals).toString();
       const gatewayAddress = getGatewayAddress();
 
       // ④ Write DB: status=CREATED

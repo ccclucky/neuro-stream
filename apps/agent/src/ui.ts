@@ -40,7 +40,7 @@ export function paymentInfo(data: {
   latencyMs: number;
 }): void {
   console.log(
-    `\n${YELLOW}  ⚡ Payment${RESET}  ${DIM}id=${data.requestId.slice(0, 10)}…  cost=${data.cost} ETH  latency=${data.latencyMs}ms${RESET}`
+    `\n${YELLOW}  ⚡ Payment${RESET}  ${DIM}id=${data.requestId.slice(0, 10)}…  cost=${data.cost} USDC  latency=${data.latencyMs}ms${RESET}`
   );
 }
 

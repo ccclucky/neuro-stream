@@ -1,8 +1,9 @@
 import 'dotenv/config';
 import * as readline from 'node:readline';
-import { formatEther } from 'viem';
+import { formatUnits } from 'viem';
 import { createPublicClient, http } from 'viem';
 import { hardhat } from 'viem/chains';
+import { ERC20ABI } from '@neurostream/sdk';
 import { NeuroStream } from '@neurostream/sdk';
 import { createGeminiClient, createChat, sendMessage, type ToolExecutor } from './gemini.js';
 import { callService } from './neurostream.js';
@@ -15,6 +16,8 @@ const PRIVATE_KEY = process.env.NEUROSTREAM_PRIVATE_KEY as `0x${string}` | undef
 const ESCROW_ADDRESS = process.env.ESCROW_CONTRACT_ADDRESS as `0x${string}` | undefined;
 const RPC_URL = process.env.MONAD_RPC_URL || 'http://127.0.0.1:8545';
 const CHAIN_ID = Number(process.env.CHAIN_ID || '31337');
+const TOKEN_ADDRESS = process.env.PAYMENT_TOKEN_ADDRESS as `0x${string}` | undefined;
+const TOKEN_DECIMALS = Number(process.env.PAYMENT_TOKEN_DECIMALS || '6');
 
 const missing = [
   !GEMINI_API_KEY && 'GEMINI_API_KEY',
@@ -67,9 +70,18 @@ const executeTool: ToolExecutor = async (name, args) => {
 
 // ── Commands ─────────────────────────────────────────────
 async function handleBalance(): Promise<void> {
-  const balance = await publicClient.getBalance({ address: client.address });
   info('Wallet', client.address);
-  info('Balance', `${formatEther(balance)} ETH`);
+  if (TOKEN_ADDRESS) {
+    const balance = await publicClient.readContract({
+      address: TOKEN_ADDRESS,
+      abi: ERC20ABI,
+      functionName: 'balanceOf',
+      args: [client.address],
+    });
+    info('Balance', `${formatUnits(balance as bigint, TOKEN_DECIMALS)} USDC`);
+  } else {
+    info('Balance', '(PAYMENT_TOKEN_ADDRESS not set)');
+  }
 }
 
 async function handleUserInput(input: string): Promise<void> {

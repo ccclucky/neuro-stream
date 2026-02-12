@@ -1,7 +1,7 @@
-import { formatEther } from 'viem';
+import { formatUnits } from 'viem';
 import { createPublicClient, http } from 'viem';
 import { hardhat } from 'viem/chains';
-import type { NeuroStream } from '@neurostream/sdk';
+import { type NeuroStream, ERC20ABI } from '@neurostream/sdk';
 
 export interface CallResult {
   result: string;
@@ -25,7 +25,19 @@ export async function callService(
     transport: http(rpcUrl),
   });
 
-  const balanceBefore = await publicClient.getBalance({ address: client.address });
+  const tokenAddress = process.env.PAYMENT_TOKEN_ADDRESS as `0x${string}` | undefined;
+  const tokenDecimals = Number(process.env.PAYMENT_TOKEN_DECIMALS || '6');
+
+  let balanceBefore = 0n;
+  if (tokenAddress) {
+    balanceBefore = await publicClient.readContract({
+      address: tokenAddress,
+      abi: ERC20ABI,
+      functionName: 'balanceOf',
+      args: [client.address],
+    }) as bigint;
+  }
+
   const startTime = Date.now();
 
   // One-liner: auto-discover + pay + invoke
@@ -36,13 +48,23 @@ export async function callService(
   });
 
   const latencyMs = Date.now() - startTime;
-  const balanceAfter = await publicClient.getBalance({ address: client.address });
-  const spent = balanceBefore - balanceAfter;
+
+  let cost = '0';
+  if (tokenAddress) {
+    const balanceAfter = await publicClient.readContract({
+      address: tokenAddress,
+      abi: ERC20ABI,
+      functionName: 'balanceOf',
+      args: [client.address],
+    }) as bigint;
+    const spent = balanceBefore - balanceAfter;
+    cost = formatUnits(spent, tokenDecimals);
+  }
 
   return {
     result,
     requestId,
-    cost: formatEther(spent),
+    cost,
     latencyMs,
   };
 }

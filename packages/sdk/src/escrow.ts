@@ -3,13 +3,12 @@ import {
   createWalletClient,
   http,
   getContract,
-  parseEther,
   type PublicClient,
   type GetContractReturnType,
   type Chain,
 } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
-import { EscrowABI } from './abi';
+import { EscrowABI, ERC20ABI } from './abi';
 
 export enum PaymentStatus {
   None = 0,
@@ -31,6 +30,7 @@ export interface EscrowClientConfig {
   privateKey: `0x${string}`;
   rpcUrl?: string;
   escrowAddress?: `0x${string}`;
+  tokenAddress?: `0x${string}`;
   chainId?: number;
 }
 
@@ -65,6 +65,7 @@ export class EscrowClient {
   private contract: GetContractReturnType<typeof EscrowABI, PublicClient>;
   private account: ReturnType<typeof privateKeyToAccount>;
   private escrowAddress: `0x${string}`;
+  private tokenAddress: `0x${string}`;
   private chain: Chain;
 
   constructor(config: EscrowClientConfig) {
@@ -78,9 +79,15 @@ export class EscrowClient {
       throw new Error('escrowAddress is required: pass it in config or set ESCROW_CONTRACT_ADDRESS env var');
     }
 
+    const tokenAddress = config.tokenAddress || (process.env.PAYMENT_TOKEN_ADDRESS as `0x${string}` | undefined);
+    if (!tokenAddress) {
+      throw new Error('tokenAddress is required: pass it in config or set PAYMENT_TOKEN_ADDRESS env var');
+    }
+
     this.chain = createChain(config.chainId ?? 1, rpcUrl);
     this.account = privateKeyToAccount(config.privateKey);
     this.escrowAddress = escrowAddress;
+    this.tokenAddress = tokenAddress;
 
     this.publicClient = createPublicClient({
       chain: this.chain,
@@ -108,14 +115,25 @@ export class EscrowClient {
    * Lock funds in escrow for a service request
    */
   async open(params: OpenParams): Promise<`0x${string}`> {
-    const amount = typeof params.amount === 'string' ? parseEther(params.amount) : params.amount;
+    const amount = typeof params.amount === 'string' ? BigInt(params.amount) : params.amount;
 
+    // Step 1: Approve escrow to spend tokens
+    const approveHash = await this.walletClient.writeContract({
+      address: this.tokenAddress,
+      abi: ERC20ABI,
+      functionName: 'approve',
+      args: [this.escrowAddress, amount],
+      chain: this.chain,
+      account: this.account,
+    });
+    await this.publicClient.waitForTransactionReceipt({ hash: approveHash });
+
+    // Step 2: Open escrow (nonpayable — tokens transferred via safeTransferFrom)
     const hash = await this.walletClient.writeContract({
       address: this.escrowAddress,
       abi: EscrowABI,
       functionName: 'open',
-      args: [params.requestId, params.provider, params.hashLock, params.deadline],
-      value: amount,
+      args: [params.requestId, params.provider, amount, params.hashLock, params.deadline],
       chain: this.chain,
       account: this.account,
     });

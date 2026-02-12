@@ -23,6 +23,15 @@ describe('NeuroStream Gateway integration', () => {
     chainId: 31337,
   };
 
+  beforeEach(() => {
+    // EscrowClient now requires tokenAddress — set via env for all tests
+    process.env.PAYMENT_TOKEN_ADDRESS = '0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512';
+  });
+
+  afterEach(() => {
+    delete process.env.PAYMENT_TOKEN_ADDRESS;
+  });
+
   describe('constructor with gatewayUrl', () => {
     it('should accept gatewayUrl in config', () => {
       const client = new NeuroStream({

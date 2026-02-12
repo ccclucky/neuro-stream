@@ -81,7 +81,7 @@ export class DiscoveryClient {
       endpoint: row.endpoint as string,
       pricing: {
         model: (row.pricing_model as 'per_call' | 'per_token' | 'per_minute') || 'per_call',
-        asset: (row.pricing_asset as string) || 'ETH',
+        asset: (row.pricing_asset as string) || 'USDC',
         amount: (row.pricing_amount as string) || '0',
       },
       recipient: row.recipient as `0x${string}`,

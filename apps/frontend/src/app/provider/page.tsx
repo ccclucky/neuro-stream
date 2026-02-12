@@ -2,9 +2,9 @@
 
 import { usePrivy, useSignMessage, useWallets } from '@privy-io/react-auth';
 import { useCallback, useEffect, useState } from 'react';
+import Link from 'next/link';
 import { isSupabaseConfigured, supabaseFetch } from '@/lib/supabase';
 import { useEmbeddedWallet } from '@/lib/useEmbeddedWallet';
-import { Deposit } from '@/components/deposit';
 
 interface Service {
   id: string;
@@ -27,10 +27,10 @@ interface Payment {
   created_at: string;
 }
 
-function weiToEth(wei: string): string {
-  const num = BigInt(wei);
-  const eth = Number(num) / 1e18;
-  return eth.toFixed(6);
+function formatTokenAmount(raw: string): string {
+  const num = BigInt(raw);
+  const amount = Number(num) / 1e6;
+  return amount.toFixed(2);
 }
 
 function shortenHex(hex: string, chars = 6): string {
@@ -48,7 +48,7 @@ export default function ProviderPage() {
   const { login, authenticated, user } = usePrivy();
   const { wallets } = useWallets();
   const { signMessage } = useSignMessage();
-  const { embeddedAddress } = useEmbeddedWallet();
+  useEmbeddedWallet();
   const [showRegisterForm, setShowRegisterForm] = useState(false);
   const [registerLoading, setRegisterLoading] = useState(false);
   const [formData, setFormData] = useState({
@@ -116,8 +116,8 @@ export default function ProviderPage() {
       for (const r of released) {
         sum += BigInt(r.amount);
       }
-      const eth = Number(sum) / 1e18;
-      setTotalEarned(eth.toFixed(6));
+      const usdc = Number(sum) / 1e6;
+      setTotalEarned(usdc.toFixed(2));
       setTotalCalls(released.length);
     } catch (err) {
       console.error('[Provider] fetchProviderData error:', err);
@@ -172,7 +172,7 @@ export default function ProviderPage() {
           serviceType: formData.serviceType,
           endpoint: formData.endpoint,
           pricingAmount: formData.pricingAmount,
-          pricingAsset: 'ETH',
+          pricingAsset: 'USDC',
         }),
       });
 
@@ -195,22 +195,7 @@ export default function ProviderPage() {
     return (
       <div className="max-w-2xl mx-auto">
         <div className="card rounded-2xl p-12 text-center">
-          <div className="w-16 h-16 rounded-xl bg-gray-100 flex items-center justify-center mx-auto mb-6">
-            <svg
-              className="w-8 h-8 text-gray-600"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"
-              />
-            </svg>
-          </div>
-          <h1 className="text-3xl font-semibold text-gray-900 mb-4">
+          <h1 className="text-3xl font-semibold text-gray-900 mb-3">
             Provider Panel
           </h1>
           <p className="text-gray-500 mb-8 max-w-md mx-auto">
@@ -227,119 +212,32 @@ export default function ProviderPage() {
   return (
     <div className="max-w-5xl mx-auto space-y-6">
       {/* Header */}
-      <div className="flex items-center gap-3 mb-2">
-        <div className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center">
-          <svg
-            className="w-5 h-5 text-gray-600"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"
-            />
-          </svg>
-        </div>
+      <div className="mb-2">
+        <h1 className="text-2xl font-semibold text-gray-900">
+          Provider Panel
+        </h1>
+        <p className="text-sm text-gray-500 mt-1">Register services and manage your revenue</p>
+      </div>
+
+      {/* Wallet Link */}
+      <Link href="/wallet" className="card rounded-2xl p-6 flex items-center justify-between hover:bg-gray-50 transition-colors group">
         <div>
-          <h1 className="text-2xl font-semibold text-gray-900">
-            Provider Panel
-          </h1>
-          <p className="text-sm text-gray-500">Register services and manage your revenue</p>
+          <h2 className="text-lg font-semibold text-gray-900">Wallet</h2>
+          <p className="text-gray-500 text-sm mt-1">Withdraw USDC earned from service calls</p>
         </div>
-      </div>
-
-      {/* Wallet Info */}
-      <div className="card rounded-2xl p-6">
-        <div className="flex items-center gap-4">
-          <div className="w-12 h-12 rounded-xl bg-gray-100 flex items-center justify-center">
-            <svg
-              className="w-6 h-6 text-gray-600"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"
-              />
-            </svg>
-          </div>
-          <div className="flex-1 min-w-0">
-            <h2 className="text-lg font-semibold text-gray-900 mb-1">
-              Wallet Information
-            </h2>
-            <code className="text-sm font-mono text-gray-700 bg-gray-100 px-3 py-1 rounded-lg truncate block w-fit">
-              {walletAddress || 'No wallet found'}
-            </code>
-          </div>
-        </div>
-      </div>
-
-      {/* Deposit */}
-      {embeddedAddress ? (
-        <Deposit embeddedAddress={embeddedAddress} />
-      ) : (
-        <div className="card rounded-2xl p-6 border-amber-200 bg-amber-50">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-xl bg-amber-100 flex items-center justify-center">
-              <svg className="w-6 h-6 text-amber-600 animate-spin" fill="none" viewBox="0 0 24 24">
-                <circle
-                  className="opacity-25"
-                  cx="12"
-                  cy="12"
-                  r="10"
-                  stroke="currentColor"
-                  strokeWidth="4"
-                ></circle>
-                <path
-                  className="opacity-75"
-                  fill="currentColor"
-                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                ></path>
-              </svg>
-            </div>
-            <div>
-              <h2 className="text-lg font-semibold text-amber-800 mb-1">
-                Creating Embedded Wallet...
-              </h2>
-              <p className="text-amber-600 text-sm">
-                Setting up your platform wallet. This only happens once.
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
+        <svg className="w-5 h-5 text-gray-400 group-hover:text-gray-900 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+        </svg>
+      </Link>
 
       {/* Register Service */}
       <div className="card rounded-2xl p-6">
         <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-xl bg-gray-100 flex items-center justify-center">
-              <svg
-                className="w-6 h-6 text-gray-600"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M12 6v6m0 0v6m0-6h6m-6 0H6"
-                />
-              </svg>
-            </div>
-            <div>
-              <h2 className="text-lg font-semibold text-gray-900">
-                Register New Service
-              </h2>
-              <p className="text-gray-500 text-sm">Add a new service to the marketplace</p>
-            </div>
+          <div>
+            <h2 className="text-lg font-semibold text-gray-900">
+              Register New Service
+            </h2>
+            <p className="text-gray-500 text-sm mt-1">Add a new service to the marketplace</p>
           </div>
           <button onClick={() => setShowRegisterForm(!showRegisterForm)} className="btn-secondary">
             {showRegisterForm ? 'Cancel' : 'Register Service'}
@@ -390,7 +288,7 @@ export default function ProviderPage() {
 
             <div>
               <label className="block text-sm font-medium text-gray-900 mb-2">
-                Price per Call (ETH)
+                Price per Call (USDC)
               </label>
               <input
                 type="text"
@@ -435,28 +333,11 @@ export default function ProviderPage() {
 
       {/* My Services */}
       <div className="card rounded-2xl p-6">
-        <div className="flex items-center gap-4 mb-6">
-          <div className="w-12 h-12 rounded-xl bg-gray-100 flex items-center justify-center">
-            <svg
-              className="w-6 h-6 text-gray-600"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"
-              />
-            </svg>
-          </div>
-          <div>
-            <h2 className="text-lg font-semibold text-gray-900">
-              My Services
-            </h2>
-            <p className="text-gray-500 text-sm">Services you have registered</p>
-          </div>
+        <div className="mb-6">
+          <h2 className="text-lg font-semibold text-gray-900">
+            My Services
+          </h2>
+          <p className="text-gray-500 text-sm mt-1">Services you have registered</p>
         </div>
 
         {dataLoading ? (
@@ -504,28 +385,11 @@ export default function ProviderPage() {
 
       {/* Pending Claims */}
       <div className="card rounded-2xl p-6">
-        <div className="flex items-center gap-4 mb-6">
-          <div className="w-12 h-12 rounded-xl bg-gray-100 flex items-center justify-center">
-            <svg
-              className="w-6 h-6 text-gray-600"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
-              />
-            </svg>
-          </div>
-          <div>
-            <h2 className="text-lg font-semibold text-gray-900">
-              Pending Claims
-            </h2>
-            <p className="text-gray-500 text-sm">Payments locked for your services</p>
-          </div>
+        <div className="mb-6">
+          <h2 className="text-lg font-semibold text-gray-900">
+            Pending Claims
+          </h2>
+          <p className="text-gray-500 text-sm mt-1">Payments locked for your services</p>
         </div>
 
         {dataLoading ? (
@@ -555,7 +419,7 @@ export default function ProviderPage() {
                 </div>
                 <div className="text-right ml-4">
                   <div className="text-lg font-bold text-amber-600">
-                    {weiToEth(p.amount)} ETH
+                    {formatTokenAmount(p.amount)} USDC
                   </div>
                   <div className="text-xs text-gray-500">
                     Deadline: {new Date(Number(p.deadline) * 1000).toLocaleDateString()}
@@ -569,28 +433,11 @@ export default function ProviderPage() {
 
       {/* Revenue Stats */}
       <div className="card rounded-2xl p-6">
-        <div className="flex items-center gap-4 mb-6">
-          <div className="w-12 h-12 rounded-xl bg-gray-100 flex items-center justify-center">
-            <svg
-              className="w-6 h-6 text-gray-600"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-              />
-            </svg>
-          </div>
-          <div>
-            <h2 className="text-lg font-semibold text-gray-900">
-              Revenue Statistics
-            </h2>
-            <p className="text-gray-500 text-sm">Your earnings from service calls</p>
-          </div>
+        <div className="mb-6">
+          <h2 className="text-lg font-semibold text-gray-900">
+            Revenue Statistics
+          </h2>
+          <p className="text-gray-500 text-sm mt-1">Your earnings from service calls</p>
         </div>
 
         <div className="grid grid-cols-2 gap-4">
@@ -598,7 +445,7 @@ export default function ProviderPage() {
             <div className="text-3xl font-bold text-slate-900 mb-1">
               {totalEarned}
             </div>
-            <div className="text-sm text-gray-500 font-medium">ETH Total Earned</div>
+            <div className="text-sm text-gray-500 font-medium">USDC Total Earned</div>
           </div>
           <div className="card rounded-xl p-6 text-center">
             <div className="text-3xl font-bold text-slate-900 mb-1">

@@ -8,6 +8,7 @@ const navLinks = [
   { href: '/services', label: 'Services' },
   { href: '/agent', label: 'Agent' },
   { href: '/provider', label: 'Provider' },
+  { href: '/wallet', label: 'Wallet' },
 ];
 
 export function Navigation() {

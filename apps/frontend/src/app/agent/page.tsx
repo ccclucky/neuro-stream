@@ -2,9 +2,9 @@
 
 import { usePrivy, useSignMessage } from '@privy-io/react-auth';
 import { useEffect, useState, useCallback } from 'react';
+import Link from 'next/link';
 import { isSupabaseConfigured, supabaseFetch, supabaseUrl, supabaseKey } from '@/lib/supabase';
 import { useEmbeddedWallet } from '@/lib/useEmbeddedWallet';
-import { Deposit } from '@/components/deposit';
 
 interface Payment {
   request_id: string;
@@ -27,10 +27,10 @@ interface ApiKey {
   expires_at: string | null;
 }
 
-function weiToEth(wei: string): string {
-  const num = BigInt(wei);
-  const eth = Number(num) / 1e18;
-  return eth.toFixed(6);
+function formatTokenAmount(raw: string): string {
+  const num = BigInt(raw);
+  const amount = Number(num) / 1e6;
+  return amount.toFixed(2);
 }
 
 function shortenHex(hex: string, chars = 6): string {
@@ -63,7 +63,7 @@ const edgeFunctionsUrl = supabaseUrl ? `${supabaseUrl}/functions/v1` : '';
 export default function AgentPage() {
   const { login, authenticated, user, exportWallet } = usePrivy();
   const { signMessage } = useSignMessage();
-  const { embeddedAddress, embeddedWallet } = useEmbeddedWallet();
+  const { embeddedWallet } = useEmbeddedWallet();
   const [showSdkGuide, setShowSdkGuide] = useState(false);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [paymentsLoading, setPaymentsLoading] = useState(false);
@@ -204,23 +204,8 @@ export default function AgentPage() {
   if (!authenticated) {
     return (
       <div className="max-w-2xl mx-auto">
-        <div className="card rounded-3xl p-12 text-center">
-          <div className="w-20 h-20 rounded-2xl bg-gray-100 flex items-center justify-center mx-auto mb-6">
-            <svg
-              className="w-10 h-10 text-gray-600"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
-              />
-            </svg>
-          </div>
-          <h1 className="text-3xl font-bold text-gray-900 mb-4">
+        <div className="card rounded-2xl p-12 text-center">
+          <h1 className="text-3xl font-semibold text-gray-900 mb-3">
             Agent Developer Panel
           </h1>
           <p className="text-gray-500 mb-8 max-w-md mx-auto">
@@ -238,139 +223,54 @@ export default function AgentPage() {
   return (
     <div className="max-w-5xl mx-auto space-y-6">
       {/* Header */}
-      <div className="flex items-center gap-3 mb-2">
-        <div className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center">
-          <svg
-            className="w-5 h-5 text-gray-600"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
-            />
-          </svg>
-        </div>
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">
-            Agent Developer Panel
-          </h1>
-          <p className="text-sm text-gray-500">
-            Manage your agent wallet, API keys, and SDK integration
-          </p>
-        </div>
+      <div className="mb-2">
+        <h1 className="text-2xl font-semibold text-gray-900">
+          Agent Developer Panel
+        </h1>
+        <p className="text-sm text-gray-500 mt-1">
+          Manage your agent wallet, API keys, and SDK integration
+        </p>
       </div>
 
-      {/* Deposit (includes wallet info + balance + funding) */}
-      {embeddedAddress ? (
-        <Deposit embeddedAddress={embeddedAddress} />
-      ) : (
-        <div className="card rounded-2xl p-6 border-amber-200 bg-amber-50">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-xl bg-amber-100 flex items-center justify-center">
-              <svg className="w-6 h-6 text-amber-600 animate-spin" fill="none" viewBox="0 0 24 24">
-                <circle
-                  className="opacity-25"
-                  cx="12"
-                  cy="12"
-                  r="10"
-                  stroke="currentColor"
-                  strokeWidth="4"
-                ></circle>
-                <path
-                  className="opacity-75"
-                  fill="currentColor"
-                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                ></path>
-              </svg>
-            </div>
-            <div>
-              <h2 className="text-lg font-semibold text-amber-800 mb-1">
-                Creating Embedded Wallet...
-              </h2>
-              <p className="text-amber-600 text-sm">
-                Setting up your platform wallet. This only happens once.
-              </p>
-            </div>
-          </div>
+      {/* Wallet Link */}
+      <Link href="/wallet" className="card rounded-2xl p-6 flex items-center justify-between hover:bg-gray-50 transition-colors group">
+        <div>
+          <h2 className="text-lg font-semibold text-gray-900">Wallet</h2>
+          <p className="text-gray-500 text-sm mt-1">Deposit ETH for gas and USDC for service payments</p>
         </div>
-      )}
+        <svg className="w-5 h-5 text-gray-400 group-hover:text-gray-900 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+        </svg>
+      </Link>
 
       {/* Export Private Key */}
       <div className="card rounded-2xl p-6">
-        <div className="flex items-start gap-4">
-          <div className="w-12 h-12 rounded-xl bg-gray-100 flex items-center justify-center flex-shrink-0">
-            <svg
-              className="w-6 h-6 text-gray-600"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"
-              />
-            </svg>
-          </div>
-          <div className="flex-1">
-            <h2 className="text-lg font-semibold text-gray-900 mb-2">
-              Export Private Key
-            </h2>
-            <p className="text-gray-500 text-sm mb-4">
-              Export your embedded wallet private key to use with the NeuroStream SDK in your local
-              Agent program.
-            </p>
-            <div className="flex items-center gap-4">
-              <button onClick={() => exportWallet()} className="btn-secondary">
-                Export Private Key
-              </button>
-              <span className="text-xs text-red-500 flex items-center gap-1">
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
-                  />
-                </svg>
-                Keep secure. Never share publicly.
-              </span>
-            </div>
-          </div>
+        <h2 className="text-lg font-semibold text-gray-900 mb-1">
+          Export Private Key
+        </h2>
+        <p className="text-gray-500 text-sm mb-4">
+          Export your embedded wallet private key to use with the NeuroStream SDK in your local
+          Agent program.
+        </p>
+        <div className="flex items-center gap-4">
+          <button onClick={() => exportWallet()} className="btn-secondary">
+            Export Private Key
+          </button>
+          <span className="text-xs text-red-500">
+            Keep secure. Never share publicly.
+          </span>
         </div>
       </div>
 
       {/* API Key Management */}
       <div className="card rounded-2xl p-6">
-        <div className="flex items-center gap-4 mb-6">
-          <div className="w-12 h-12 rounded-xl bg-gray-100 flex items-center justify-center">
-            <svg
-              className="w-6 h-6 text-gray-600"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"
-              />
-            </svg>
-          </div>
-          <div>
-            <h2 className="text-lg font-semibold text-gray-900">
-              API Keys
-            </h2>
-            <p className="text-gray-500 text-sm">
-              Generate API keys to authenticate your Agent with the NeuroStream platform.
-            </p>
-          </div>
+        <div className="mb-6">
+          <h2 className="text-lg font-semibold text-gray-900">
+            API Keys
+          </h2>
+          <p className="text-gray-500 text-sm mt-1">
+            Generate API keys to authenticate your Agent with the NeuroStream platform.
+          </p>
         </div>
 
         {/* Create new key */}
@@ -498,21 +398,6 @@ export default function AgentPage() {
           className="w-full flex items-center justify-between"
         >
           <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-xl bg-gray-100 flex items-center justify-center">
-              <svg
-                className="w-6 h-6 text-gray-600"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"
-                />
-              </svg>
-            </div>
             <div className="text-left">
               <h2 className="text-lg font-semibold text-gray-900">
                 SDK Integration Guide
@@ -578,30 +463,13 @@ const { result: r2 } = await client.callService({
 
       {/* Call History */}
       <div className="card rounded-2xl p-6">
-        <div className="flex items-center gap-4 mb-6">
-          <div className="w-12 h-12 rounded-xl bg-gray-100 flex items-center justify-center">
-            <svg
-              className="w-6 h-6 text-gray-600"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
-              />
-            </svg>
-          </div>
-          <div>
-            <h2 className="text-lg font-semibold text-gray-900">
-              Call History
-            </h2>
-            <p className="text-gray-500 text-sm">
-              Recent service invocations and payment status
-            </p>
-          </div>
+        <div className="mb-6">
+          <h2 className="text-lg font-semibold text-gray-900">
+            Call History
+          </h2>
+          <p className="text-gray-500 text-sm mt-1">
+            Recent service invocations and payment status
+          </p>
         </div>
 
         {paymentsLoading ? (
@@ -649,7 +517,7 @@ const { result: r2 } = await client.callService({
                         {shortenHex(p.provider)}
                       </code>
                     </td>
-                    <td className="py-4 pr-4 text-gray-900 font-medium">{weiToEth(p.amount)} ETH</td>
+                    <td className="py-4 pr-4 text-gray-900 font-medium">{formatTokenAmount(p.amount)} USDC</td>
                     <td className="py-4 pr-4">
                       <span
                         className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border ${statusConfig[p.status]?.bg} ${statusConfig[p.status]?.text}`}

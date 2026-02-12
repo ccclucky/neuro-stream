@@ -2,10 +2,9 @@
 node_modules/
 
 # Environment variables
-.env
+# Committed:  .env, .env.development, .env.production (non-sensitive defaults)
+# Gitignored: .env.local, .env.*.local (secrets & local overrides)
 .env.local
-.env.development
-.env.production
 .env.*.local
 apps/provider/.env
 apps/agent/.env

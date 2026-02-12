@@ -4,30 +4,74 @@ import { loadFixture } from '@nomicfoundation/hardhat-toolbox/network-helpers';
 import { time } from '@nomicfoundation/hardhat-network-helpers';
 
 describe('Escrow', function () {
-  // Test fixtures
+  // ============ Fixture ============
+
   async function deployEscrowFixture() {
     const [owner, agent, provider, other] = await ethers.getSigners();
 
+    // Deploy MockERC20 (6 decimals, like USDC)
+    const MockERC20 = await ethers.getContractFactory('MockERC20');
+    const token = await MockERC20.deploy('Mock USDC', 'USDC', 6);
+
+    // Deploy Escrow with token address
     const Escrow = await ethers.getContractFactory('Escrow');
-    const escrow = await Escrow.deploy();
+    const escrow = await Escrow.deploy(await token.getAddress());
+
+    // Mint 10,000 USDC to agent
+    await token.mint(agent.address, ethers.parseUnits('10000', 6));
 
     // Generate test data
     const requestId = ethers.keccak256(ethers.toUtf8Bytes('test-request-1'));
     const preimage = ethers.keccak256(ethers.toUtf8Bytes('secret-key-123'));
     const hashLock = ethers.keccak256(preimage);
-    const amount = ethers.parseEther('0.1');
-    const deadline = (await time.latest()) + 3600; // 1 hour from now
+    const amount = ethers.parseUnits('100', 6); // 100 USDC
+    const deadline = BigInt((await time.latest()) + 3600); // 1 hour from now
 
-    return { escrow, owner, agent, provider, other, requestId, preimage, hashLock, amount, deadline };
+    return {
+      token,
+      escrow,
+      owner,
+      agent,
+      provider,
+      other,
+      requestId,
+      preimage,
+      hashLock,
+      amount,
+      deadline,
+    };
   }
 
-  describe('open()', function () {
-    it('should lock funds with correct parameters', async function () {
-      const { escrow, agent, provider, requestId, hashLock, amount, deadline } =
-        await loadFixture(deployEscrowFixture);
+  // ============ constructor ============
+
+  describe('constructor', function () {
+    it('should store the payment token address', async function () {
+      const { token, escrow } = await loadFixture(deployEscrowFixture);
+
+      expect(await escrow.paymentToken()).to.equal(await token.getAddress());
+    });
+
+    it('should reject zero token address', async function () {
+      const Escrow = await ethers.getContractFactory('Escrow');
 
       await expect(
-        escrow.connect(agent).open(requestId, provider.address, hashLock, deadline, { value: amount })
+        Escrow.deploy(ethers.ZeroAddress)
+      ).to.be.revertedWithCustomError(Escrow, 'InvalidToken');
+    });
+  });
+
+  // ============ open() ============
+
+  describe('open()', function () {
+    it('should lock tokens with correct parameters', async function () {
+      const { token, escrow, agent, provider, requestId, hashLock, amount, deadline } =
+        await loadFixture(deployEscrowFixture);
+
+      // Approve escrow to spend agent's tokens
+      await token.connect(agent).approve(await escrow.getAddress(), amount);
+
+      await expect(
+        escrow.connect(agent).open(requestId, provider.address, amount, hashLock, deadline)
       ).to.not.be.reverted;
 
       const payment = await escrow.payments(requestId);
@@ -39,82 +83,127 @@ describe('Escrow', function () {
       expect(payment.status).to.equal(1); // Status.Locked
     });
 
-    it('should emit PaymentLocked event', async function () {
-      const { escrow, agent, provider, requestId, hashLock, amount, deadline } =
+    it('should transfer tokens from agent to escrow', async function () {
+      const { token, escrow, agent, provider, requestId, hashLock, amount, deadline } =
         await loadFixture(deployEscrowFixture);
 
+      const escrowAddress = await escrow.getAddress();
+
+      const agentBalanceBefore = await token.balanceOf(agent.address);
+      const escrowBalanceBefore = await token.balanceOf(escrowAddress);
+
+      await token.connect(agent).approve(escrowAddress, amount);
+      await escrow.connect(agent).open(requestId, provider.address, amount, hashLock, deadline);
+
+      const agentBalanceAfter = await token.balanceOf(agent.address);
+      const escrowBalanceAfter = await token.balanceOf(escrowAddress);
+
+      expect(agentBalanceBefore - agentBalanceAfter).to.equal(amount);
+      expect(escrowBalanceAfter - escrowBalanceBefore).to.equal(amount);
+    });
+
+    it('should emit PaymentLocked event', async function () {
+      const { token, escrow, agent, provider, requestId, hashLock, amount, deadline } =
+        await loadFixture(deployEscrowFixture);
+
+      await token.connect(agent).approve(await escrow.getAddress(), amount);
+
       await expect(
-        escrow.connect(agent).open(requestId, provider.address, hashLock, deadline, { value: amount })
+        escrow.connect(agent).open(requestId, provider.address, amount, hashLock, deadline)
       )
         .to.emit(escrow, 'PaymentLocked')
         .withArgs(requestId, agent.address, provider.address, amount, hashLock, deadline);
     });
 
     it('should reject zero amount', async function () {
-      const { escrow, agent, provider, requestId, hashLock, deadline } =
+      const { token, escrow, agent, provider, requestId, hashLock, deadline } =
         await loadFixture(deployEscrowFixture);
 
       await expect(
-        escrow.connect(agent).open(requestId, provider.address, hashLock, deadline, { value: 0 })
+        escrow.connect(agent).open(requestId, provider.address, 0, hashLock, deadline)
       ).to.be.revertedWithCustomError(escrow, 'InvalidAmount');
     });
 
     it('should reject zero provider address', async function () {
-      const { escrow, agent, requestId, hashLock, amount, deadline } =
+      const { token, escrow, agent, requestId, hashLock, amount, deadline } =
         await loadFixture(deployEscrowFixture);
 
+      await token.connect(agent).approve(await escrow.getAddress(), amount);
+
       await expect(
-        escrow.connect(agent).open(requestId, ethers.ZeroAddress, hashLock, deadline, { value: amount })
+        escrow.connect(agent).open(requestId, ethers.ZeroAddress, amount, hashLock, deadline)
       ).to.be.revertedWithCustomError(escrow, 'InvalidProvider');
     });
 
     it('should reject deadline in the past', async function () {
-      const { escrow, agent, provider, requestId, hashLock, amount } =
+      const { token, escrow, agent, provider, requestId, hashLock, amount } =
         await loadFixture(deployEscrowFixture);
 
-      const pastDeadline = (await time.latest()) - 100;
+      const pastDeadline = BigInt((await time.latest()) - 100);
+
+      await token.connect(agent).approve(await escrow.getAddress(), amount);
 
       await expect(
-        escrow.connect(agent).open(requestId, provider.address, hashLock, pastDeadline, { value: amount })
+        escrow.connect(agent).open(requestId, provider.address, amount, hashLock, pastDeadline)
       ).to.be.revertedWithCustomError(escrow, 'InvalidDeadline');
     });
 
     it('should reject duplicate requestId', async function () {
+      const { token, escrow, agent, provider, requestId, hashLock, amount, deadline } =
+        await loadFixture(deployEscrowFixture);
+
+      const escrowAddress = await escrow.getAddress();
+
+      // First open succeeds
+      await token.connect(agent).approve(escrowAddress, amount);
+      await escrow.connect(agent).open(requestId, provider.address, amount, hashLock, deadline);
+
+      // Second open with same requestId fails
+      await token.connect(agent).approve(escrowAddress, amount);
+      await expect(
+        escrow.connect(agent).open(requestId, provider.address, amount, hashLock, deadline)
+      ).to.be.revertedWithCustomError(escrow, 'PaymentExists');
+    });
+
+    it('should revert if agent has insufficient allowance', async function () {
       const { escrow, agent, provider, requestId, hashLock, amount, deadline } =
         await loadFixture(deployEscrowFixture);
 
-      await escrow.connect(agent).open(requestId, provider.address, hashLock, deadline, { value: amount });
-
+      // Do NOT approve — allowance is zero
       await expect(
-        escrow.connect(agent).open(requestId, provider.address, hashLock, deadline, { value: amount })
-      ).to.be.revertedWithCustomError(escrow, 'PaymentExists');
+        escrow.connect(agent).open(requestId, provider.address, amount, hashLock, deadline)
+      ).to.be.reverted; // SafeERC20 will revert on insufficient allowance
     });
   });
 
+  // ============ claim() ============
+
   describe('claim()', function () {
-    it('should release funds to provider with valid preimage', async function () {
-      const { escrow, agent, provider, requestId, preimage, hashLock, amount, deadline } =
+    it('should release tokens to provider with valid preimage', async function () {
+      const { token, escrow, agent, provider, requestId, preimage, hashLock, amount, deadline } =
         await loadFixture(deployEscrowFixture);
 
-      await escrow.connect(agent).open(requestId, provider.address, hashLock, deadline, { value: amount });
+      // Setup: approve + open
+      await token.connect(agent).approve(await escrow.getAddress(), amount);
+      await escrow.connect(agent).open(requestId, provider.address, amount, hashLock, deadline);
 
-      const providerBalanceBefore = await ethers.provider.getBalance(provider.address);
+      const providerBalanceBefore = await token.balanceOf(provider.address);
 
-      await expect(escrow.connect(provider).claim(requestId, preimage)).to.not.be.reverted;
+      await escrow.connect(provider).claim(requestId, preimage);
 
-      const providerBalanceAfter = await ethers.provider.getBalance(provider.address);
-      // Provider balance should increase (minus gas costs)
-      expect(providerBalanceAfter).to.be.greaterThan(providerBalanceBefore);
+      const providerBalanceAfter = await token.balanceOf(provider.address);
+      expect(providerBalanceAfter - providerBalanceBefore).to.equal(amount);
 
       const payment = await escrow.payments(requestId);
       expect(payment.status).to.equal(2); // Status.Released
     });
 
     it('should emit PaymentReleased event with preimage', async function () {
-      const { escrow, agent, provider, requestId, preimage, hashLock, amount, deadline } =
+      const { token, escrow, agent, provider, requestId, preimage, hashLock, amount, deadline } =
         await loadFixture(deployEscrowFixture);
 
-      await escrow.connect(agent).open(requestId, provider.address, hashLock, deadline, { value: amount });
+      await token.connect(agent).approve(await escrow.getAddress(), amount);
+      await escrow.connect(agent).open(requestId, provider.address, amount, hashLock, deadline);
 
       await expect(escrow.connect(provider).claim(requestId, preimage))
         .to.emit(escrow, 'PaymentReleased')
@@ -122,10 +211,11 @@ describe('Escrow', function () {
     });
 
     it('should reject invalid preimage', async function () {
-      const { escrow, agent, provider, requestId, hashLock, amount, deadline } =
+      const { token, escrow, agent, provider, requestId, hashLock, amount, deadline } =
         await loadFixture(deployEscrowFixture);
 
-      await escrow.connect(agent).open(requestId, provider.address, hashLock, deadline, { value: amount });
+      await token.connect(agent).approve(await escrow.getAddress(), amount);
+      await escrow.connect(agent).open(requestId, provider.address, amount, hashLock, deadline);
 
       const invalidPreimage = ethers.keccak256(ethers.toUtf8Bytes('wrong-key'));
 
@@ -135,10 +225,11 @@ describe('Escrow', function () {
     });
 
     it('should reject claim from non-provider', async function () {
-      const { escrow, agent, provider, other, requestId, preimage, hashLock, amount, deadline } =
+      const { token, escrow, agent, provider, other, requestId, preimage, hashLock, amount, deadline } =
         await loadFixture(deployEscrowFixture);
 
-      await escrow.connect(agent).open(requestId, provider.address, hashLock, deadline, { value: amount });
+      await token.connect(agent).approve(await escrow.getAddress(), amount);
+      await escrow.connect(agent).open(requestId, provider.address, amount, hashLock, deadline);
 
       await expect(
         escrow.connect(other).claim(requestId, preimage)
@@ -146,13 +237,14 @@ describe('Escrow', function () {
     });
 
     it('should reject claim after deadline', async function () {
-      const { escrow, agent, provider, requestId, preimage, hashLock, amount, deadline } =
+      const { token, escrow, agent, provider, requestId, preimage, hashLock, amount, deadline } =
         await loadFixture(deployEscrowFixture);
 
-      await escrow.connect(agent).open(requestId, provider.address, hashLock, deadline, { value: amount });
+      await token.connect(agent).approve(await escrow.getAddress(), amount);
+      await escrow.connect(agent).open(requestId, provider.address, amount, hashLock, deadline);
 
       // Move time past deadline
-      await time.increaseTo(deadline + 1);
+      await time.increaseTo(deadline + 1n);
 
       await expect(
         escrow.connect(provider).claim(requestId, preimage)
@@ -170,35 +262,38 @@ describe('Escrow', function () {
     });
   });
 
+  // ============ refund() ============
+
   describe('refund()', function () {
-    it('should refund agent after deadline', async function () {
-      const { escrow, agent, provider, requestId, hashLock, amount, deadline } =
+    it('should refund tokens to agent after deadline', async function () {
+      const { token, escrow, agent, provider, requestId, hashLock, amount, deadline } =
         await loadFixture(deployEscrowFixture);
 
-      await escrow.connect(agent).open(requestId, provider.address, hashLock, deadline, { value: amount });
+      await token.connect(agent).approve(await escrow.getAddress(), amount);
+      await escrow.connect(agent).open(requestId, provider.address, amount, hashLock, deadline);
 
       // Move time past deadline
-      await time.increaseTo(deadline + 1);
+      await time.increaseTo(deadline + 1n);
 
-      const agentBalanceBefore = await ethers.provider.getBalance(agent.address);
+      const agentBalanceBefore = await token.balanceOf(agent.address);
 
-      await expect(escrow.connect(agent).refund(requestId)).to.not.be.reverted;
+      await escrow.connect(agent).refund(requestId);
 
-      const agentBalanceAfter = await ethers.provider.getBalance(agent.address);
-      // Agent balance should increase (minus gas costs)
-      expect(agentBalanceAfter).to.be.greaterThan(agentBalanceBefore);
+      const agentBalanceAfter = await token.balanceOf(agent.address);
+      expect(agentBalanceAfter - agentBalanceBefore).to.equal(amount);
 
       const payment = await escrow.payments(requestId);
       expect(payment.status).to.equal(3); // Status.Refunded
     });
 
     it('should emit PaymentRefunded event', async function () {
-      const { escrow, agent, provider, requestId, hashLock, amount, deadline } =
+      const { token, escrow, agent, provider, requestId, hashLock, amount, deadline } =
         await loadFixture(deployEscrowFixture);
 
-      await escrow.connect(agent).open(requestId, provider.address, hashLock, deadline, { value: amount });
+      await token.connect(agent).approve(await escrow.getAddress(), amount);
+      await escrow.connect(agent).open(requestId, provider.address, amount, hashLock, deadline);
 
-      await time.increaseTo(deadline + 1);
+      await time.increaseTo(deadline + 1n);
 
       await expect(escrow.connect(agent).refund(requestId))
         .to.emit(escrow, 'PaymentRefunded')
@@ -206,10 +301,11 @@ describe('Escrow', function () {
     });
 
     it('should reject refund before deadline', async function () {
-      const { escrow, agent, provider, requestId, hashLock, amount, deadline } =
+      const { token, escrow, agent, provider, requestId, hashLock, amount, deadline } =
         await loadFixture(deployEscrowFixture);
 
-      await escrow.connect(agent).open(requestId, provider.address, hashLock, deadline, { value: amount });
+      await token.connect(agent).approve(await escrow.getAddress(), amount);
+      await escrow.connect(agent).open(requestId, provider.address, amount, hashLock, deadline);
 
       await expect(
         escrow.connect(agent).refund(requestId)
@@ -217,12 +313,13 @@ describe('Escrow', function () {
     });
 
     it('should reject refund from non-agent', async function () {
-      const { escrow, agent, provider, other, requestId, hashLock, amount, deadline } =
+      const { token, escrow, agent, provider, other, requestId, hashLock, amount, deadline } =
         await loadFixture(deployEscrowFixture);
 
-      await escrow.connect(agent).open(requestId, provider.address, hashLock, deadline, { value: amount });
+      await token.connect(agent).approve(await escrow.getAddress(), amount);
+      await escrow.connect(agent).open(requestId, provider.address, amount, hashLock, deadline);
 
-      await time.increaseTo(deadline + 1);
+      await time.increaseTo(deadline + 1n);
 
       await expect(
         escrow.connect(other).refund(requestId)
@@ -230,13 +327,14 @@ describe('Escrow', function () {
     });
 
     it('should reject refund on already claimed payment', async function () {
-      const { escrow, agent, provider, requestId, preimage, hashLock, amount, deadline } =
+      const { token, escrow, agent, provider, requestId, preimage, hashLock, amount, deadline } =
         await loadFixture(deployEscrowFixture);
 
-      await escrow.connect(agent).open(requestId, provider.address, hashLock, deadline, { value: amount });
+      await token.connect(agent).approve(await escrow.getAddress(), amount);
+      await escrow.connect(agent).open(requestId, provider.address, amount, hashLock, deadline);
       await escrow.connect(provider).claim(requestId, preimage);
 
-      await time.increaseTo(deadline + 1);
+      await time.increaseTo(deadline + 1n);
 
       await expect(
         escrow.connect(agent).refund(requestId)
@@ -244,12 +342,15 @@ describe('Escrow', function () {
     });
   });
 
+  // ============ getPayment() ============
+
   describe('getPayment()', function () {
     it('should return payment details', async function () {
-      const { escrow, agent, provider, requestId, hashLock, amount, deadline } =
+      const { token, escrow, agent, provider, requestId, hashLock, amount, deadline } =
         await loadFixture(deployEscrowFixture);
 
-      await escrow.connect(agent).open(requestId, provider.address, hashLock, deadline, { value: amount });
+      await token.connect(agent).approve(await escrow.getAddress(), amount);
+      await escrow.connect(agent).open(requestId, provider.address, amount, hashLock, deadline);
 
       const payment = await escrow.getPayment(requestId);
       expect(payment.agent).to.equal(agent.address);
