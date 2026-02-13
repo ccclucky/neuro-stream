@@ -1,6 +1,7 @@
 'use client';
 
 import { PrivyProvider } from '@privy-io/react-auth';
+import { appChain } from '@/lib/constants';
 
 const privyAppId = process.env.NEXT_PUBLIC_PRIVY_APP_ID;
 
@@ -22,6 +23,8 @@ export function Providers({ children }: { children: React.ReactNode }) {
         embeddedWallets: {
           createOnLogin: 'all-users',
         },
+        defaultChain: appChain,
+        supportedChains: [appChain],
       }}
     >
       {children}
