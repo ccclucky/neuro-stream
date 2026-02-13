@@ -81,12 +81,13 @@ graph TD
 ### 3.2 Escrow Contract (Monad)
 *   **ERC20 代币支付**（v4）：使用 `IERC20 paymentToken`（构造函数参数，immutable），不再使用原生 ETH。
 *   部署时指定支付代币地址（本地用 MockERC20/6 decimals，主网用 USDC）。
+*   **平台抽成**（v5）：构造函数接收 `platform` 地址和 `feeBps`（基点，200=2%，最高 5000=50%）。`claim()` 自动分账：fee 转给 platform，剩余转给 provider。`PlatformFeeCollected` 事件记录每笔抽成。
 *   Agent 需先 `approve(escrow, amount)` 再调用 `open()`，合约通过 `safeTransferFrom` 拉取代币。
-*   `claim()` / `refund()` 通过 `safeTransfer` 转移代币。
+*   `claim()` 通过 `safeTransfer` 分账（fee → platform, remainder → provider），`refund()` 全额退还 agent。
 *   通过 `Hashlock` 确保交付后再打款。
 *   提供超时自动退款机制。
-*   **v3 变化**：`recipient` 改为 Gateway 地址（而非 Provider 地址）。
-*   **环境变量**：`PAYMENT_TOKEN_ADDRESS`（代币合约地址）、`PAYMENT_TOKEN_DECIMALS`（精度，USDC=6）。
+*   **Gas 费用**：所有操作使用 Privy 嵌入式钱包（smart wallet），平台通过 Privy Gas Sponsorship 赞助全部 gas 费。用户无需持有 ETH。
+*   **环境变量**：`PAYMENT_TOKEN_ADDRESS`、`PAYMENT_TOKEN_DECIMALS`、`PLATFORM_ADDRESS`、`PLATFORM_FEE_BPS`。
 
 ### 3.3 NeuroStream SDK
 *   **v3 Gateway 模式**（推荐）：`gatewayUrl` 配置后，自动走 Gateway 流程
@@ -103,7 +104,7 @@ graph TD
 *   所有加密/支付/claim 逻辑由 Gateway 处理
 
 ### 3.5 viem + Supabase Indexer (Index Layer)
-*   使用 viem `getLogs` 轮询链上 `PaymentLocked`、`PaymentReleased` 和 `PaymentRefunded` 事件。
+*   使用 viem `getLogs` 轮询链上 `PaymentLocked`、`PaymentReleased`、`PaymentRefunded` 和 `PlatformFeeCollected` 事件。
 *   将事件数据写入 Supabase PostgreSQL `payments` 表。
 *   `indexer_state` 表存储区块游标，支持崩溃恢复。
 *   轮询间隔可配置（默认 3 秒）。

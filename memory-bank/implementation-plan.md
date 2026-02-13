@@ -43,7 +43,7 @@
 
 ### 作为 Agent 开发者
 - **登录**：Privy 登录 → 获得嵌入式钱包
-- **充值**：向 Privy 钱包充值 ETH（用于调用服务 + gas）
+- **充值**：向 Privy 钱包充值 USDC（用于调用服务）
 - **导出私钥**：从 DApp 导出 Privy 钱包私钥
 - **开发 Agent**：在本地用 OpenAI SDK / Claude SDK 等开发 AI 程序
 - **集成 SDK**：将 NeuroStream SDK 集成到 Agent 代码，配置导出的私钥
@@ -52,14 +52,13 @@
 
 ### 作为 Provider
 - **登录**：Privy 登录（同一账户）
-- **充值 Gas**：向 Privy 钱包充值少量 ETH（用于 claim gas）
 - **注册服务**：填写服务信息，关联 Privy 钱包地址
-- **收取服务费**：调用 claim() → 服务费到账（全额，无平台手续费）
+- **收取服务费**：Gateway 调用 claim() → 服务费到账（扣除平台手续费）
 - **提现**：将 Privy 钱包余额转出到外部钱包
 
 ### Agent 本地开发流程
 ```
-1. 开发者在 DApp 登录 → 获得 Privy 钱包 → 充值 → 导出私钥
+1. 开发者在 DApp 登录 → 获得 Privy 钱包 → 充值 USDC → 导出私钥
 2. 开发者在本地开发 Agent 程序（使用任意 AI SDK）
 3. 开发者集成 NeuroStream SDK，配置私钥到 .env
 4. Agent 运行时，SDK 自动：
@@ -75,9 +74,8 @@
 | 费用 | 由谁支付 |
 |------|----------|
 | 服务费 | Agent 开发者（通过 SDK 签名） |
-| open() gas | Agent 开发者 |
-| claim() gas | Provider（需自行充值 gas 到 Privy 钱包）|
-| 平台手续费 | **无** |
+| 平台手续费 | 从每笔 claim 中自动扣除（feeBps，默认 2%） |
+| Gas 费 | 平台通过 Privy Gas Sponsorship 赞助，用户无需持有 ETH |
 
 ## 开发范式：TDD
 
