@@ -6,10 +6,8 @@ import Link from 'next/link';
 import {
   createPublicClient,
   encodeFunctionData,
-  formatEther,
   formatUnits,
   http,
-  parseEther,
   parseUnits,
 } from 'viem';
 import { useEmbeddedWallet } from '@/lib/useEmbeddedWallet';
@@ -24,7 +22,7 @@ import {
 
 // --- Types ---
 
-type Tab = 'deposit-eth' | 'deposit-usdc' | 'withdraw-usdc';
+type Tab = 'deposit-usdc' | 'withdraw-usdc';
 
 interface WalletTx {
   id: string;
@@ -78,8 +76,7 @@ export default function WalletPage() {
   const { wallets } = useWallets();
   const { embeddedAddress, embeddedWallet } = useEmbeddedWallet();
 
-  const [activeTab, setActiveTab] = useState<Tab>('deposit-eth');
-  const [ethBalance, setEthBalance] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<Tab>('deposit-usdc');
   const [usdcBalance, setUsdcBalance] = useState<string | null>(null);
   const [amount, setAmount] = useState('');
   const [txStatus, setTxStatus] = useState<'idle' | 'pending' | 'success' | 'error'>('idle');
@@ -99,10 +96,6 @@ export default function WalletPage() {
     if (!embeddedAddress) return;
     try {
       const client = createPublicClient({ transport: http(rpcUrl) });
-
-      // ETH balance
-      const ethBal = await client.getBalance({ address: embeddedAddress as `0x${string}` });
-      setEthBalance(formatEther(ethBal));
 
       // USDC balance
       if (tokenAddress) {
@@ -213,51 +206,6 @@ export default function WalletPage() {
     setTxHash(null);
     setTxError(null);
     setAmount('');
-  };
-
-  // --- Deposit ETH ---
-
-  const handleDepositEth = async () => {
-    if (!externalWallet || !amount) return;
-    const parsed = parseEther(amount);
-    if (parsed <= 0n) return;
-
-    setTxStatus('pending');
-    setTxHash(null);
-    setTxError(null);
-
-    try {
-      await externalWallet.switchChain(targetChainId);
-      const provider = await externalWallet.getEthereumProvider();
-
-      const hash = await provider.request({
-        method: 'eth_sendTransaction',
-        params: [{
-          from: externalWallet.address as `0x${string}`,
-          to: embeddedAddress as `0x${string}`,
-          value: `0x${parsed.toString(16)}`,
-        }],
-      });
-
-      setTxHash(hash as string);
-      setTxStatus('success');
-      setAmount('');
-      setTimeout(fetchBalances, 3000);
-
-      recordTransaction({
-        type: 'deposit',
-        asset: 'ETH',
-        amount: parsed.toString(),
-        txHash: hash as string,
-        from: externalWallet.address,
-        to: embeddedAddress!,
-      });
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      console.error('[Wallet] ETH deposit failed:', msg);
-      setTxError(msg);
-      setTxStatus('error');
-    }
   };
 
   // --- Deposit USDC ---
@@ -373,8 +321,7 @@ export default function WalletPage() {
   // --- Handle Submit ---
 
   const handleSubmit = () => {
-    if (activeTab === 'deposit-eth') handleDepositEth();
-    else if (activeTab === 'deposit-usdc') handleDepositUsdc();
+    if (activeTab === 'deposit-usdc') handleDepositUsdc();
     else handleWithdrawUsdc();
   };
 
@@ -396,7 +343,7 @@ export default function WalletPage() {
         <div className="card rounded-2xl p-12 text-center">
           <h1 className="text-3xl font-semibold text-gray-900 mb-3">Wallet</h1>
           <p className="text-gray-500 mb-8 max-w-md mx-auto">
-            Login to manage your ETH and USDC balances, deposit, withdraw, and view transaction history.
+            Login to manage your USDC balance, deposit, withdraw, and view transaction history.
           </p>
           <button onClick={login} className="btn-primary">Connect Wallet</button>
         </div>
@@ -426,13 +373,11 @@ export default function WalletPage() {
   }
 
   const tabs: { key: Tab; label: string }[] = [
-    { key: 'deposit-eth', label: 'Deposit ETH' },
     { key: 'deposit-usdc', label: 'Deposit USDC' },
     { key: 'withdraw-usdc', label: 'Withdraw USDC' },
   ];
 
-  const isDeposit = activeTab.startsWith('deposit');
-  const assetLabel = activeTab === 'deposit-eth' ? 'ETH' : 'USDC';
+  const isDeposit = activeTab === 'deposit-usdc';
   const actionLabel = isDeposit ? 'Deposit' : 'Withdraw';
   const needsExternal = true; // All operations need external wallet
 
@@ -469,34 +414,19 @@ export default function WalletPage() {
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
-          <div className="rounded-xl bg-gray-50 p-4">
-            <span className="text-sm text-gray-500">ETH Balance</span>
-            <div className="text-xl font-bold text-gray-900 mt-1">
-              {ethBalance !== null ? (
-                <span className="flex items-center gap-2">
-                  {parseFloat(ethBalance).toFixed(4)}
-                  <span className="text-sm text-gray-500 font-normal">ETH</span>
-                </span>
-              ) : (
-                <span className="text-gray-400">Loading...</span>
-              )}
-            </div>
-          </div>
-          <div className="rounded-xl bg-gray-50 p-4">
-            <span className="text-sm text-gray-500">USDC Balance</span>
-            <div className="text-xl font-bold text-gray-900 mt-1">
-              {usdcBalance !== null ? (
-                <span className="flex items-center gap-2">
-                  {parseFloat(usdcBalance).toFixed(2)}
-                  <span className="text-sm text-gray-500 font-normal">USDC</span>
-                </span>
-              ) : tokenAddress ? (
-                <span className="text-gray-400">Loading...</span>
-              ) : (
-                <span className="text-gray-400">Not configured</span>
-              )}
-            </div>
+        <div className="rounded-xl bg-gray-50 p-4">
+          <span className="text-sm text-gray-500">USDC Balance</span>
+          <div className="text-xl font-bold text-gray-900 mt-1">
+            {usdcBalance !== null ? (
+              <span className="flex items-center gap-2">
+                {parseFloat(usdcBalance).toFixed(2)}
+                <span className="text-sm text-gray-500 font-normal">USDC</span>
+              </span>
+            ) : tokenAddress ? (
+              <span className="text-gray-400">Loading...</span>
+            ) : (
+              <span className="text-gray-400">Not configured</span>
+            )}
           </div>
         </div>
       </div>
@@ -549,7 +479,7 @@ export default function WalletPage() {
                   type="text"
                   value={amount}
                   onChange={(e) => setAmount(e.target.value)}
-                  placeholder={activeTab === 'deposit-eth' ? '0.01' : '1.00'}
+                  placeholder="1.00"
                   className="w-full bg-white border border-gray-200 rounded-xl px-4 py-3 pr-24 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-slate-900 focus:ring-1 focus:ring-slate-900 transition-all"
                 />
                 <span className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-2">
@@ -561,12 +491,12 @@ export default function WalletPage() {
                       MAX
                     </button>
                   )}
-                  <span className="text-sm text-gray-400">{assetLabel}</span>
+                  <span className="text-sm text-gray-400">USDC</span>
                 </span>
               </div>
               <button
                 onClick={handleSubmit}
-                disabled={txStatus === 'pending' || !amount || (activeTab !== 'deposit-eth' && !tokenAddress)}
+                disabled={txStatus === 'pending' || !amount || !tokenAddress}
                 className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
               >
                 {txStatus === 'pending' ? (

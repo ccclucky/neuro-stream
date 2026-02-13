@@ -236,7 +236,7 @@ export default function AgentPage() {
       <Link href="/wallet" className="card rounded-2xl p-6 flex items-center justify-between hover:bg-gray-50 transition-colors group">
         <div>
           <h2 className="text-lg font-semibold text-gray-900">Wallet</h2>
-          <p className="text-gray-500 text-sm mt-1">Deposit ETH for gas and USDC for service payments</p>
+          <p className="text-gray-500 text-sm mt-1">Deposit USDC for service payments</p>
         </div>
         <svg className="w-5 h-5 text-gray-400 group-hover:text-gray-900 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
