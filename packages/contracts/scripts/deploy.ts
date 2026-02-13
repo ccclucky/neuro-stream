@@ -45,9 +45,20 @@ async function main() {
     console.log('\nUsing existing token at:', tokenAddress);
   }
 
+  // Determine platform address and fee
+  const platformAddress = process.env.PLATFORM_ADDRESS || deployer.address;
+  const feeBps = parseInt(process.env.PLATFORM_FEE_BPS || '200', 10); // default 2%
+
+  if (isNaN(feeBps) || feeBps < 0 || feeBps > 5000) {
+    throw new Error(`Invalid PLATFORM_FEE_BPS: must be 0-5000, got ${process.env.PLATFORM_FEE_BPS}`);
+  }
+
+  console.log('\nPlatform address:', platformAddress);
+  console.log('Platform fee:', feeBps, 'bps', `(${feeBps / 100}%)`);
+
   // Deploy Escrow
   const Escrow = await ethers.getContractFactory('Escrow');
-  const escrow = await Escrow.deploy(tokenAddress);
+  const escrow = await Escrow.deploy(tokenAddress, platformAddress, feeBps);
   await escrow.waitForDeployment();
 
   const escrowAddress = await escrow.getAddress();
@@ -57,6 +68,8 @@ async function main() {
   console.log(`PAYMENT_TOKEN_ADDRESS=${tokenAddress}`);
   console.log(`ESCROW_CONTRACT_ADDRESS=${escrowAddress}`);
   console.log(`PAYMENT_TOKEN_DECIMALS=6`);
+  console.log(`PLATFORM_ADDRESS=${platformAddress}`);
+  console.log(`PLATFORM_FEE_BPS=${feeBps}`);
 }
 
 main().catch((error) => {

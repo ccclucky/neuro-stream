@@ -31,6 +31,16 @@ export const EscrowABI = [
     anonymous: false,
     inputs: [
       { indexed: true, internalType: 'bytes32', name: 'requestId', type: 'bytes32' },
+      { indexed: true, internalType: 'address', name: 'platform', type: 'address' },
+      { indexed: false, internalType: 'uint256', name: 'fee', type: 'uint256' },
+    ],
+    name: 'PlatformFeeCollected',
+    type: 'event',
+  },
+  {
+    anonymous: false,
+    inputs: [
+      { indexed: true, internalType: 'bytes32', name: 'requestId', type: 'bytes32' },
       { indexed: true, internalType: 'address', name: 'agent', type: 'address' },
       { indexed: false, internalType: 'uint256', name: 'amount', type: 'uint256' },
     ],

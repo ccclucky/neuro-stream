@@ -37,6 +37,16 @@ export const EscrowABI = [
   },
   {
     inputs: [],
+    name: 'InvalidPlatform',
+    type: 'error',
+  },
+  {
+    inputs: [],
+    name: 'InvalidFeeBps',
+    type: 'error',
+  },
+  {
+    inputs: [],
     name: 'NotAgent',
     type: 'error',
   },
@@ -97,6 +107,16 @@ export const EscrowABI = [
     type: 'event',
   },
   {
+    anonymous: false,
+    inputs: [
+      { indexed: true, internalType: 'bytes32', name: 'requestId', type: 'bytes32' },
+      { indexed: true, internalType: 'address', name: 'platform', type: 'address' },
+      { indexed: false, internalType: 'uint256', name: 'fee', type: 'uint256' },
+    ],
+    name: 'PlatformFeeCollected',
+    type: 'event',
+  },
+  {
     inputs: [
       { internalType: 'bytes32', name: 'requestId', type: 'bytes32' },
       { internalType: 'bytes32', name: 'preimage', type: 'bytes32' },
@@ -147,6 +167,24 @@ export const EscrowABI = [
     name: 'paymentToken',
     outputs: [
       { internalType: 'address', name: '', type: 'address' },
+    ],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [],
+    name: 'platform',
+    outputs: [
+      { internalType: 'address', name: '', type: 'address' },
+    ],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [],
+    name: 'feeBps',
+    outputs: [
+      { internalType: 'uint256', name: '', type: 'uint256' },
     ],
     stateMutability: 'view',
     type: 'function',
