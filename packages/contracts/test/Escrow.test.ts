@@ -13,9 +13,10 @@ describe('Escrow', function () {
     const MockERC20 = await ethers.getContractFactory('MockERC20');
     const token = await MockERC20.deploy('Mock USDC', 'USDC', 6);
 
-    // Deploy Escrow with token address
+    // Deploy Escrow with token, platform (owner), and 2% fee (200 bps)
     const Escrow = await ethers.getContractFactory('Escrow');
-    const escrow = await Escrow.deploy(await token.getAddress());
+    const feeBps = 200; // 2%
+    const escrow = await Escrow.deploy(await token.getAddress(), owner.address, feeBps);
 
     // Mint 10,000 USDC to agent
     await token.mint(agent.address, ethers.parseUnits('10000', 6));
@@ -39,6 +40,7 @@ describe('Escrow', function () {
       hashLock,
       amount,
       deadline,
+      feeBps,
     };
   }
 
@@ -47,16 +49,64 @@ describe('Escrow', function () {
   describe('constructor', function () {
     it('should store the payment token address', async function () {
       const { token, escrow } = await loadFixture(deployEscrowFixture);
-
       expect(await escrow.paymentToken()).to.equal(await token.getAddress());
+    });
+
+    it('should store the platform address', async function () {
+      const { escrow, owner } = await loadFixture(deployEscrowFixture);
+      expect(await escrow.platform()).to.equal(owner.address);
+    });
+
+    it('should store the fee basis points', async function () {
+      const { escrow, feeBps } = await loadFixture(deployEscrowFixture);
+      expect(await escrow.feeBps()).to.equal(feeBps);
     });
 
     it('should reject zero token address', async function () {
       const Escrow = await ethers.getContractFactory('Escrow');
-
+      const [owner] = await ethers.getSigners();
       await expect(
-        Escrow.deploy(ethers.ZeroAddress)
+        Escrow.deploy(ethers.ZeroAddress, owner.address, 200)
       ).to.be.revertedWithCustomError(Escrow, 'InvalidToken');
+    });
+
+    it('should reject zero platform address', async function () {
+      const MockERC20 = await ethers.getContractFactory('MockERC20');
+      const token = await MockERC20.deploy('T', 'T', 6);
+      const Escrow = await ethers.getContractFactory('Escrow');
+      await expect(
+        Escrow.deploy(await token.getAddress(), ethers.ZeroAddress, 200)
+      ).to.be.revertedWithCustomError(Escrow, 'InvalidPlatform');
+    });
+
+    it('should reject feeBps > 5000', async function () {
+      const MockERC20 = await ethers.getContractFactory('MockERC20');
+      const token = await MockERC20.deploy('T', 'T', 6);
+      const Escrow = await ethers.getContractFactory('Escrow');
+      const [owner] = await ethers.getSigners();
+      await expect(
+        Escrow.deploy(await token.getAddress(), owner.address, 5001)
+      ).to.be.revertedWithCustomError(Escrow, 'InvalidFeeBps');
+    });
+
+    it('should allow feeBps = 5000 (maximum)', async function () {
+      const MockERC20 = await ethers.getContractFactory('MockERC20');
+      const token = await MockERC20.deploy('T', 'T', 6);
+      const Escrow = await ethers.getContractFactory('Escrow');
+      const [owner] = await ethers.getSigners();
+      await expect(
+        Escrow.deploy(await token.getAddress(), owner.address, 5000)
+      ).to.not.be.reverted;
+    });
+
+    it('should allow feeBps = 0 (no fee)', async function () {
+      const MockERC20 = await ethers.getContractFactory('MockERC20');
+      const token = await MockERC20.deploy('T', 'T', 6);
+      const Escrow = await ethers.getContractFactory('Escrow');
+      const [owner] = await ethers.getSigners();
+      await expect(
+        Escrow.deploy(await token.getAddress(), owner.address, 0)
+      ).to.not.be.reverted;
     });
   });
 
@@ -179,26 +229,29 @@ describe('Escrow', function () {
   // ============ claim() ============
 
   describe('claim()', function () {
-    it('should release tokens to provider with valid preimage', async function () {
-      const { token, escrow, agent, provider, requestId, preimage, hashLock, amount, deadline } =
+    it('should split payment: fee to platform, remainder to provider', async function () {
+      const { token, escrow, owner, agent, provider, requestId, preimage, hashLock, amount, deadline, feeBps } =
         await loadFixture(deployEscrowFixture);
 
-      // Setup: approve + open
       await token.connect(agent).approve(await escrow.getAddress(), amount);
       await escrow.connect(agent).open(requestId, provider.address, amount, hashLock, deadline);
 
-      const providerBalanceBefore = await token.balanceOf(provider.address);
+      const platformBefore = await token.balanceOf(owner.address);
+      const providerBefore = await token.balanceOf(provider.address);
 
       await escrow.connect(provider).claim(requestId, preimage);
 
-      const providerBalanceAfter = await token.balanceOf(provider.address);
-      expect(providerBalanceAfter - providerBalanceBefore).to.equal(amount);
+      const expectedFee = amount * BigInt(feeBps) / 10000n;
+      const expectedProvider = amount - expectedFee;
+
+      expect(await token.balanceOf(owner.address) - platformBefore).to.equal(expectedFee);
+      expect(await token.balanceOf(provider.address) - providerBefore).to.equal(expectedProvider);
 
       const payment = await escrow.payments(requestId);
       expect(payment.status).to.equal(2); // Status.Released
     });
 
-    it('should emit PaymentReleased event with preimage', async function () {
+    it('should emit PaymentReleased with original amount (not deducted)', async function () {
       const { token, escrow, agent, provider, requestId, preimage, hashLock, amount, deadline } =
         await loadFixture(deployEscrowFixture);
 
@@ -208,6 +261,83 @@ describe('Escrow', function () {
       await expect(escrow.connect(provider).claim(requestId, preimage))
         .to.emit(escrow, 'PaymentReleased')
         .withArgs(requestId, provider.address, amount, preimage);
+    });
+
+    it('should emit PlatformFeeCollected event', async function () {
+      const { token, escrow, owner, agent, provider, requestId, preimage, hashLock, amount, deadline, feeBps } =
+        await loadFixture(deployEscrowFixture);
+
+      await token.connect(agent).approve(await escrow.getAddress(), amount);
+      await escrow.connect(agent).open(requestId, provider.address, amount, hashLock, deadline);
+
+      const expectedFee = amount * BigInt(feeBps) / 10000n;
+
+      await expect(escrow.connect(provider).claim(requestId, preimage))
+        .to.emit(escrow, 'PlatformFeeCollected')
+        .withArgs(requestId, owner.address, expectedFee);
+    });
+
+    it('should send full amount to provider when feeBps = 0', async function () {
+      const { token, agent, provider } = await loadFixture(deployEscrowFixture);
+
+      const Escrow = await ethers.getContractFactory('Escrow');
+      const [owner] = await ethers.getSigners();
+      const escrow0 = await Escrow.deploy(await token.getAddress(), owner.address, 0);
+
+      const requestId = ethers.keccak256(ethers.toUtf8Bytes('zero-fee-test'));
+      const preimage = ethers.keccak256(ethers.toUtf8Bytes('key-zero'));
+      const hashLock = ethers.keccak256(preimage);
+      const amount = ethers.parseUnits('50', 6);
+      const deadline = BigInt((await time.latest()) + 3600);
+
+      await token.connect(agent).approve(await escrow0.getAddress(), amount);
+      await escrow0.connect(agent).open(requestId, provider.address, amount, hashLock, deadline);
+
+      const providerBefore = await token.balanceOf(provider.address);
+      await escrow0.connect(provider).claim(requestId, preimage);
+      expect(await token.balanceOf(provider.address) - providerBefore).to.equal(amount);
+    });
+
+    it('should NOT emit PlatformFeeCollected when feeBps = 0', async function () {
+      const { token, agent, provider } = await loadFixture(deployEscrowFixture);
+
+      const Escrow = await ethers.getContractFactory('Escrow');
+      const [owner] = await ethers.getSigners();
+      const escrow0 = await Escrow.deploy(await token.getAddress(), owner.address, 0);
+
+      const requestId = ethers.keccak256(ethers.toUtf8Bytes('no-fee-event-test'));
+      const preimage = ethers.keccak256(ethers.toUtf8Bytes('key-no-fee'));
+      const hashLock = ethers.keccak256(preimage);
+      const amount = ethers.parseUnits('50', 6);
+      const deadline = BigInt((await time.latest()) + 3600);
+
+      await token.connect(agent).approve(await escrow0.getAddress(), amount);
+      await escrow0.connect(agent).open(requestId, provider.address, amount, hashLock, deadline);
+
+      await expect(escrow0.connect(provider).claim(requestId, preimage))
+        .to.not.emit(escrow0, 'PlatformFeeCollected');
+    });
+
+    it('should handle dust amounts where fee rounds to zero', async function () {
+      const { token, escrow, owner, agent, provider } = await loadFixture(deployEscrowFixture);
+
+      const requestId = ethers.keccak256(ethers.toUtf8Bytes('dust-test'));
+      const preimage = ethers.keccak256(ethers.toUtf8Bytes('key-dust'));
+      const hashLock = ethers.keccak256(preimage);
+      const amount = 1n; // 1 wei of USDC — fee = 1*200/10000 = 0
+      const deadline = BigInt((await time.latest()) + 3600);
+
+      await token.connect(agent).approve(await escrow.getAddress(), amount);
+      await escrow.connect(agent).open(requestId, provider.address, amount, hashLock, deadline);
+
+      const providerBefore = await token.balanceOf(provider.address);
+      const platformBefore = await token.balanceOf(owner.address);
+
+      await escrow.connect(provider).claim(requestId, preimage);
+
+      // Fee rounds to 0, full amount goes to provider
+      expect(await token.balanceOf(provider.address) - providerBefore).to.equal(1n);
+      expect(await token.balanceOf(owner.address) - platformBefore).to.equal(0n);
     });
 
     it('should reject invalid preimage', async function () {
@@ -243,7 +373,6 @@ describe('Escrow', function () {
       await token.connect(agent).approve(await escrow.getAddress(), amount);
       await escrow.connect(agent).open(requestId, provider.address, amount, hashLock, deadline);
 
-      // Move time past deadline
       await time.increaseTo(deadline + 1n);
 
       await expect(

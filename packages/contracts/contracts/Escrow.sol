@@ -43,6 +43,8 @@ contract Escrow {
     // ============ State ============
 
     IERC20 public immutable paymentToken;
+    address public immutable platform;
+    uint256 public immutable feeBps; // basis points, e.g. 200 = 2%
     mapping(bytes32 => Payment) public payments;
 
     // ============ Events ============
@@ -69,6 +71,12 @@ contract Escrow {
         uint256 amount
     );
 
+    event PlatformFeeCollected(
+        bytes32 indexed requestId,
+        address indexed platform,
+        uint256 fee
+    );
+
     // ============ Errors ============
 
     error InvalidAmount();
@@ -82,12 +90,18 @@ contract Escrow {
     error DeadlinePassed();
     error DeadlineNotPassed();
     error InvalidToken();
+    error InvalidPlatform();
+    error InvalidFeeBps();
 
     // ============ Constructor ============
 
-    constructor(IERC20 _paymentToken) {
+    constructor(IERC20 _paymentToken, address _platform, uint256 _feeBps) {
         if (address(_paymentToken) == address(0)) revert InvalidToken();
+        if (_platform == address(0)) revert InvalidPlatform();
+        if (_feeBps > 5000) revert InvalidFeeBps(); // max 50%
         paymentToken = _paymentToken;
+        platform = _platform;
+        feeBps = _feeBps;
     }
 
     // ============ External Functions ============
@@ -135,9 +149,20 @@ contract Escrow {
 
         payment.status = Status.Released;
 
-        emit PaymentReleased(requestId, payment.provider, payment.amount, preimage);
+        uint256 fee = payment.amount * feeBps / 10000;
+        uint256 providerAmount = payment.amount - fee;
 
-        paymentToken.safeTransfer(payment.provider, payment.amount);
+        // Events before interactions (CEI pattern)
+        emit PaymentReleased(requestId, payment.provider, payment.amount, preimage);
+        if (fee > 0) {
+            emit PlatformFeeCollected(requestId, platform, fee);
+        }
+
+        // Interactions
+        if (fee > 0) {
+            paymentToken.safeTransfer(platform, fee);
+        }
+        paymentToken.safeTransfer(payment.provider, providerAmount);
     }
 
     function refund(bytes32 requestId) external {
