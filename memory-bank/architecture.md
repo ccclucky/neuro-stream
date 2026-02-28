@@ -83,10 +83,21 @@ graph TD
 *   部署时指定支付代币地址（本地用 MockERC20/6 decimals，主网用 USDC）。
 *   **平台抽成**（v5）：构造函数接收 `platform` 地址和 `feeBps`（基点，200=2%，最高 5000=50%）。`claim()` 自动分账：fee 转给 platform，剩余转给 provider。`PlatformFeeCollected` 事件记录每笔抽成。
 *   Agent 需先 `approve(escrow, amount)` 再调用 `open()`，合约通过 `safeTransferFrom` 拉取代币。
+*   `claim()` 不限制 `msg.sender` — 任何持有有效 preimage 的地址均可调用（标准 HTLC 做法）。资金始终发到 `payment.provider`（Provider 嵌入式钱包），而非 `msg.sender`。Gateway 使用自己的钱包调用 claim()，Provider 直接在链上收到款项。
 *   `claim()` 通过 `safeTransfer` 分账（fee → platform, remainder → provider），`refund()` 全额退还 agent。
 *   通过 `Hashlock` 确保交付后再打款。
 *   提供超时自动退款机制。
-*   **Gas 费用**：所有操作使用 Privy 嵌入式钱包（smart wallet），平台通过 Privy Gas Sponsorship 赞助全部 gas 费。用户无需持有 ETH。
+*   **Gas 策略（统一规则）**：
+
+| 角色 | 操作 | Gas 谁付 | 逻辑 |
+|------|------|---------|------|
+| Agent | approve() + open() | Agent | Agent 发起服务请求，自己的交易 |
+| Agent | withdraw USDC/MON | Agent | 自己取钱 |
+| Provider | withdraw USDC/MON | Provider | 自己取钱 |
+| Gateway | claim() | 平台 | 平台的收款操作，经营成本 |
+
+**原则**：谁的操作谁付 gas，谁受益谁承担。
+
 *   **环境变量**：`PAYMENT_TOKEN_ADDRESS`、`PAYMENT_TOKEN_DECIMALS`、`PLATFORM_ADDRESS`、`PLATFORM_FEE_BPS`。
 
 ### 3.3 NeuroStream SDK
@@ -127,11 +138,11 @@ graph TD
 
 ## 4. 关键流程：v3 Gateway 闭环
 
-1.  **挑战阶段**: Agent SDK POST /invoke → Gateway 返回 402 + { requestId, hashLock, amount, recipient, deadline }
-2.  **锁定阶段**: Agent 先调用 `token.approve(escrow, amount)`，再调用 `Escrow.open(requestId, gateway, amount, hashLock, deadline)`
-3.  **调用阶段**: Agent SDK POST /invoke + requestId → Gateway 验证 Escrow → 转发到 Provider → 拿到结果
+1.  **挑战阶段**: Agent SDK POST /invoke → Gateway 返回 402 + { requestId, hashLock, amount, recipient(=Provider 钱包), deadline }
+2.  **锁定阶段**: Agent 先调用 `token.approve(escrow, amount)`，再调用 `Escrow.open(requestId, providerWallet, amount, hashLock, deadline)`
+3.  **调用阶段**: Agent SDK POST /invoke + requestId → Gateway 验证 Escrow（provider 地址 == provider_wallet）→ 转发到 Provider → 拿到结果
 4.  **持久化阶段**: Gateway 将 Provider 结果写入 `gateway_challenges.provider_result`
-5.  **结算阶段**: Gateway 调用 `Escrow.claim(requestId, preimage)` 领取资金
+5.  **结算阶段**: Gateway 调用 `Escrow.claim(requestId, preimage)`（Gateway 钱包付 gas），资金直接到 Provider 嵌入式钱包（98% provider + 2% platform）
 6.  **完成阶段**: Gateway 返回 `{ result, requestId }` 给 Agent
 7.  **恢复阶段**: 每 30s 恢复任务扫描 ESCROW_LOCKED / RESULT_STORED 状态的卡住请求，自动推进
 
@@ -154,6 +165,7 @@ CREATE TABLE gateway_challenges (
   agent_address TEXT NOT NULL,
   service_id TEXT NOT NULL,
   provider_url TEXT NOT NULL,
+  provider_wallet TEXT,  -- Provider 嵌入式钱包地址（claim 资金直接到此地址）
   -- 密码学
   preimage TEXT NOT NULL,
   hash_lock TEXT NOT NULL,

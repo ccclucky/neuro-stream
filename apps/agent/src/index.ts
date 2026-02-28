@@ -8,6 +8,7 @@ import { NeuroStream } from '@neurostream/sdk';
 import { createGeminiClient, createChat, sendMessage, type ToolExecutor } from './gemini.js';
 import { callService } from './neurostream.js';
 import { banner, divider, info, prompt, agentSays, paymentInfo, errorMsg, helpText } from './ui.js';
+import { startServer } from './server.js';
 
 // ── Environment validation ───────────────────────────────
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
@@ -23,7 +24,6 @@ const missing = [
   !GEMINI_API_KEY && 'GEMINI_API_KEY',
   !NEUROSTREAM_API_KEY && 'NEUROSTREAM_API_KEY',
   !PRIVATE_KEY && 'NEUROSTREAM_PRIVATE_KEY',
-  !ESCROW_ADDRESS && 'ESCROW_CONTRACT_ADDRESS',
 ].filter(Boolean);
 
 if (missing.length > 0) {
@@ -37,7 +37,7 @@ const client = new NeuroStream({
   apiKey: NEUROSTREAM_API_KEY!,
   privateKey: PRIVATE_KEY!,
   rpcUrl: RPC_URL,
-  escrowAddress: ESCROW_ADDRESS!,
+  escrowAddress: ESCROW_ADDRESS,
   chainId: CHAIN_ID,
 });
 
@@ -99,10 +99,16 @@ async function handleUserInput(input: string): Promise<void> {
 // ── REPL ─────────────────────────────────────────────────
 async function main(): Promise<void> {
   banner();
-  info('Escrow', ESCROW_ADDRESS!);
+  if (ESCROW_ADDRESS) info('Escrow', ESCROW_ADDRESS);
   info('Agent', client.address);
   info('API Key', `${NEUROSTREAM_API_KEY!.slice(0, 16)}...`);
   await handleBalance();
+
+  const port = Number(process.env.AGENT_PORT || '3002');
+  startServer(port, client, ai, RPC_URL).catch((e) => {
+    console.error(`Failed to start web server:`, e);
+  });
+
   helpText();
 
   const rl = readline.createInterface({

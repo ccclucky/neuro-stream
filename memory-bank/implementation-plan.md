@@ -75,7 +75,9 @@
 |------|----------|
 | 服务费 | Agent 开发者（通过 SDK 签名） |
 | 平台手续费 | 从每笔 claim 中自动扣除（feeBps，默认 2%） |
-| Gas 费 | 平台通过 Privy Gas Sponsorship 赞助，用户无需持有 ETH |
+| Gas: Agent approve+open | Agent 自付（自己的交易） |
+| Gas: Agent/Provider withdraw | 各自自付（自己取钱） |
+| Gas: Gateway claim() | 平台承担（经营成本） |
 
 ## 开发范式：TDD
 

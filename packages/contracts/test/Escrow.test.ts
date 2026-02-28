@@ -354,16 +354,48 @@ describe('Escrow', function () {
       ).to.be.revertedWithCustomError(escrow, 'InvalidPreimage');
     });
 
-    it('should reject claim from non-provider', async function () {
-      const { token, escrow, agent, provider, other, requestId, preimage, hashLock, amount, deadline } =
+    it('should allow any address to call claim with valid preimage', async function () {
+      const { token, escrow, agent, provider, other, requestId, preimage, hashLock, amount, deadline, feeBps } =
         await loadFixture(deployEscrowFixture);
 
       await token.connect(agent).approve(await escrow.getAddress(), amount);
       await escrow.connect(agent).open(requestId, provider.address, amount, hashLock, deadline);
 
+      const providerBefore = await token.balanceOf(provider.address);
+
+      // Third party (other) calls claim — funds go to provider, not msg.sender
       await expect(
         escrow.connect(other).claim(requestId, preimage)
-      ).to.be.revertedWithCustomError(escrow, 'NotProvider');
+      ).to.not.be.reverted;
+
+      const expectedFee = amount * BigInt(feeBps) / 10000n;
+      const expectedProvider = amount - expectedFee;
+      expect(await token.balanceOf(provider.address) - providerBefore).to.equal(expectedProvider);
+
+      // Other (caller) should not have received any tokens
+      expect(await token.balanceOf(other.address)).to.equal(0n);
+    });
+
+    it('should split payment correctly when called by non-provider', async function () {
+      const { token, escrow, owner, agent, provider, other, requestId, preimage, hashLock, amount, deadline, feeBps } =
+        await loadFixture(deployEscrowFixture);
+
+      await token.connect(agent).approve(await escrow.getAddress(), amount);
+      await escrow.connect(agent).open(requestId, provider.address, amount, hashLock, deadline);
+
+      const platformBefore = await token.balanceOf(owner.address);
+      const providerBefore = await token.balanceOf(provider.address);
+
+      await escrow.connect(other).claim(requestId, preimage);
+
+      const expectedFee = amount * BigInt(feeBps) / 10000n;
+      const expectedProvider = amount - expectedFee;
+
+      expect(await token.balanceOf(owner.address) - platformBefore).to.equal(expectedFee);
+      expect(await token.balanceOf(provider.address) - providerBefore).to.equal(expectedProvider);
+
+      const payment = await escrow.payments(requestId);
+      expect(payment.status).to.equal(2); // Status.Released
     });
 
     it('should reject claim after deadline', async function () {

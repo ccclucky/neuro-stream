@@ -7,22 +7,26 @@ import {
   createPublicClient,
   encodeFunctionData,
   formatUnits,
+  formatEther,
   http,
   parseUnits,
+  parseEther,
 } from 'viem';
 import { useEmbeddedWallet } from '@/lib/useEmbeddedWallet';
 import { isSupabaseConfigured, supabaseFetch } from '@/lib/supabase';
 import {
+  appChain,
   rpcUrl,
   targetChainId,
   tokenAddress,
   tokenDecimals,
   ERC20_ABI,
+  txUrl,
 } from '@/lib/constants';
 
 // --- Types ---
 
-type Tab = 'deposit-usdc' | 'withdraw-usdc';
+type Tab = 'deposit-usdc' | 'withdraw-usdc' | 'deposit-native' | 'withdraw-native';
 
 interface WalletTx {
   id: string;
@@ -78,6 +82,7 @@ export default function WalletPage() {
 
   const [activeTab, setActiveTab] = useState<Tab>('deposit-usdc');
   const [usdcBalance, setUsdcBalance] = useState<string | null>(null);
+  const [nativeBalance, setNativeBalance] = useState<string | null>(null);
   const [amount, setAmount] = useState('');
   const [txStatus, setTxStatus] = useState<'idle' | 'pending' | 'success' | 'error'>('idle');
   const [txHash, setTxHash] = useState<string | null>(null);
@@ -96,6 +101,12 @@ export default function WalletPage() {
     if (!embeddedAddress) return;
     try {
       const client = createPublicClient({ transport: http(rpcUrl) });
+
+      // Native token balance
+      const nativeBal = await client.getBalance({
+        address: embeddedAddress as `0x${string}`,
+      });
+      setNativeBalance(formatEther(nativeBal));
 
       // USDC balance
       if (tokenAddress) {
@@ -315,6 +326,98 @@ export default function WalletPage() {
   const handleMax = () => {
     if (activeTab === 'withdraw-usdc' && usdcBalance) {
       setAmount(parseFloat(usdcBalance).toString());
+    } else if (activeTab === 'withdraw-native' && nativeBalance) {
+      setAmount(parseFloat(nativeBalance).toString());
+    }
+  };
+
+  // --- Deposit Native Token ---
+
+  const handleDepositNative = async () => {
+    if (!externalWallet || !embeddedAddress || !amount) return;
+    const parsed = parseEther(amount);
+    if (parsed <= 0n) return;
+
+    setTxStatus('pending');
+    setTxHash(null);
+    setTxError(null);
+
+    try {
+      await externalWallet.switchChain(targetChainId);
+      const provider = await externalWallet.getEthereumProvider();
+
+      const hash = await provider.request({
+        method: 'eth_sendTransaction',
+        params: [{
+          from: externalWallet.address as `0x${string}`,
+          to: embeddedAddress as `0x${string}`,
+          value: `0x${parsed.toString(16)}`,
+        }],
+      });
+
+      setTxHash(hash as string);
+      setTxStatus('success');
+      setAmount('');
+      setTimeout(fetchBalances, 3000);
+
+      recordTransaction({
+        type: 'deposit',
+        asset: appChain.nativeCurrency.symbol,
+        amount: parsed.toString(),
+        txHash: hash as string,
+        from: externalWallet.address,
+        to: embeddedAddress,
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error('[Wallet] Native deposit failed:', msg);
+      setTxError(msg);
+      setTxStatus('error');
+    }
+  };
+
+  // --- Withdraw Native Token ---
+
+  const handleWithdrawNative = async () => {
+    if (!embeddedWallet || !externalWallet || !embeddedAddress || !amount) return;
+    const parsed = parseEther(amount);
+    if (parsed <= 0n) return;
+
+    setTxStatus('pending');
+    setTxHash(null);
+    setTxError(null);
+
+    try {
+      await embeddedWallet.switchChain(targetChainId);
+      const provider = await embeddedWallet.getEthereumProvider();
+
+      const hash = await provider.request({
+        method: 'eth_sendTransaction',
+        params: [{
+          from: embeddedAddress as `0x${string}`,
+          to: externalWallet.address as `0x${string}`,
+          value: `0x${parsed.toString(16)}`,
+        }],
+      });
+
+      setTxHash(hash as string);
+      setTxStatus('success');
+      setAmount('');
+      setTimeout(fetchBalances, 3000);
+
+      recordTransaction({
+        type: 'withdraw',
+        asset: appChain.nativeCurrency.symbol,
+        amount: parsed.toString(),
+        txHash: hash as string,
+        from: embeddedAddress,
+        to: externalWallet.address,
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error('[Wallet] Native withdrawal failed:', msg);
+      setTxError(msg);
+      setTxStatus('error');
     }
   };
 
@@ -322,13 +425,15 @@ export default function WalletPage() {
 
   const handleSubmit = () => {
     if (activeTab === 'deposit-usdc') handleDepositUsdc();
-    else handleWithdrawUsdc();
+    else if (activeTab === 'withdraw-usdc') handleWithdrawUsdc();
+    else if (activeTab === 'deposit-native') handleDepositNative();
+    else handleWithdrawNative();
   };
 
   // --- Format Display Amount ---
 
   const formatDisplayAmount = (raw: string, asset: string): string => {
-    if (asset === 'ETH') {
+    if (asset !== 'USDC') {
       const eth = Number(raw) / 1e18;
       return eth < 0.0001 ? '<0.0001' : eth.toFixed(4);
     }
@@ -372,12 +477,18 @@ export default function WalletPage() {
     );
   }
 
+  const nativeSymbol = appChain.nativeCurrency.symbol;
+
   const tabs: { key: Tab; label: string }[] = [
     { key: 'deposit-usdc', label: 'Deposit USDC' },
     { key: 'withdraw-usdc', label: 'Withdraw USDC' },
+    { key: 'deposit-native', label: `Deposit ${nativeSymbol}` },
+    { key: 'withdraw-native', label: `Withdraw ${nativeSymbol}` },
   ];
 
-  const isDeposit = activeTab === 'deposit-usdc';
+  const isDeposit = activeTab === 'deposit-usdc' || activeTab === 'deposit-native';
+  const isNative = activeTab === 'deposit-native' || activeTab === 'withdraw-native';
+  const currentSymbol = isNative ? nativeSymbol : 'USDC';
   const actionLabel = isDeposit ? 'Deposit' : 'Withdraw';
   const needsExternal = true; // All operations need external wallet
 
@@ -414,19 +525,34 @@ export default function WalletPage() {
           </div>
         </div>
 
-        <div className="rounded-xl bg-gray-50 p-4">
-          <span className="text-sm text-gray-500">USDC Balance</span>
-          <div className="text-xl font-bold text-gray-900 mt-1">
-            {usdcBalance !== null ? (
-              <span className="flex items-center gap-2">
-                {parseFloat(usdcBalance).toFixed(2)}
-                <span className="text-sm text-gray-500 font-normal">USDC</span>
-              </span>
-            ) : tokenAddress ? (
-              <span className="text-gray-400">Loading...</span>
-            ) : (
-              <span className="text-gray-400">Not configured</span>
-            )}
+        <div className="grid grid-cols-2 gap-4">
+          <div className="rounded-xl bg-gray-50 p-4">
+            <span className="text-sm text-gray-500">USDC Balance</span>
+            <div className="text-xl font-bold text-gray-900 mt-1">
+              {usdcBalance !== null ? (
+                <span className="flex items-center gap-2">
+                  {parseFloat(usdcBalance).toFixed(2)}
+                  <span className="text-sm text-gray-500 font-normal">USDC</span>
+                </span>
+              ) : tokenAddress ? (
+                <span className="text-gray-400">Loading...</span>
+              ) : (
+                <span className="text-gray-400">Not configured</span>
+              )}
+            </div>
+          </div>
+          <div className="rounded-xl bg-gray-50 p-4">
+            <span className="text-sm text-gray-500">{nativeSymbol} Balance</span>
+            <div className="text-xl font-bold text-gray-900 mt-1">
+              {nativeBalance !== null ? (
+                <span className="flex items-center gap-2">
+                  {parseFloat(nativeBalance).toFixed(4)}
+                  <span className="text-sm text-gray-500 font-normal">{nativeSymbol}</span>
+                </span>
+              ) : (
+                <span className="text-gray-400">Loading...</span>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -483,7 +609,7 @@ export default function WalletPage() {
                   className="w-full bg-white border border-gray-200 rounded-xl px-4 py-3 pr-24 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-slate-900 focus:ring-1 focus:ring-slate-900 transition-all"
                 />
                 <span className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-2">
-                  {activeTab === 'withdraw-usdc' && (
+                  {(activeTab === 'withdraw-usdc' || activeTab === 'withdraw-native') && (
                     <button
                       onClick={handleMax}
                       className="text-xs text-gray-500 hover:text-gray-900 font-medium transition-colors"
@@ -491,12 +617,12 @@ export default function WalletPage() {
                       MAX
                     </button>
                   )}
-                  <span className="text-sm text-gray-400">USDC</span>
+                  <span className="text-sm text-gray-400">{currentSymbol}</span>
                 </span>
               </div>
               <button
                 onClick={handleSubmit}
-                disabled={txStatus === 'pending' || !amount || !tokenAddress}
+                disabled={txStatus === 'pending' || !amount || (!isNative && !tokenAddress)}
                 className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
               >
                 {txStatus === 'pending' ? (
@@ -533,9 +659,14 @@ export default function WalletPage() {
                   </svg>
                   <span className="font-medium">Transaction Confirmed</span>
                 </div>
-                <code className="text-xs font-mono text-emerald-700">
+                <a
+                  href={txUrl(txHash)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs font-mono text-emerald-700 hover:text-emerald-900 underline underline-offset-2"
+                >
                   {txHash.slice(0, 20)}...{txHash.slice(-8)}
-                </code>
+                </a>
               </div>
             )}
             {txStatus === 'error' && (
@@ -587,7 +718,14 @@ export default function WalletPage() {
                         <span className="text-gray-500">{tx.asset}</span>
                       </div>
                       {tx.txHash && (
-                        <code className="text-xs font-mono text-gray-500">{shortenHash(tx.txHash)}</code>
+                        <a
+                          href={txUrl(tx.txHash)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs font-mono text-gray-500 hover:text-gray-900 underline underline-offset-2"
+                        >
+                          {shortenHash(tx.txHash)}
+                        </a>
                       )}
                     </div>
                   </div>

@@ -2,7 +2,7 @@
   "name": "neurostream",
   "private": true,
   "scripts": {
-    "dev": "dotenv -c development -- turbo run dev",
+    "dev": "dotenv -c development -- turbo run dev --filter=@neurostream/frontend --filter=@neurostream/indexer --filter=@neurostream/sdk",
     "build": "dotenv -c production -- turbo run build",
     "test": "dotenv -c development -- turbo run test",
     "lint": "turbo run lint",

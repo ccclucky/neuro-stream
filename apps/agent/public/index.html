@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NeuroStream Agent</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --surface-color: #1e293b;
+            --text-color: #e2e8f0;
+            --text-muted: #94a3b8;
+            --primary-color: #3b82f6;
+            --primary-hover: #2563eb;
+            --bot-bg: #334155;
+            --user-bg: #2563eb;
+            --border-color: #334155;
+            --highlight: #f59e0b;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 0;
+            display: flex;
+            height: 100vh;
+            flex-direction: column;
+        }
+
+        .header {
+            background-color: var(--surface-color);
+            padding: 1rem 2rem;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header-title {
+            font-size: 1.25rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .header-title span {
+            color: var(--primary-color);
+        }
+
+        .chat-container {
+            flex: 1;
+            overflow-y: auto;
+            padding: 2rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+
+        .message {
+            display: flex;
+            flex-direction: column;
+            max-width: 80%;
+            animation: fadeIn 0.3s ease-in-out;
+        }
+
+        .message.user {
+            align-self: flex-end;
+        }
+
+        .message.bot {
+            align-self: flex-start;
+        }
+
+        .message-content {
+            padding: 1rem;
+            border-radius: 0.75rem;
+            line-height: 1.5;
+            word-wrap: break-word;
+        }
+
+        .message.user .message-content {
+            background-color: var(--user-bg);
+            color: white;
+            border-bottom-right-radius: 0.25rem;
+        }
+
+        .message.bot .message-content {
+            background-color: var(--bot-bg);
+            border-bottom-left-radius: 0.25rem;
+        }
+
+        .message-meta {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            margin-top: 0.25rem;
+            display: flex;
+            gap: 1rem;
+        }
+
+        .message.user .message-meta {
+            justify-content: flex-end;
+        }
+
+        .tool-call {
+            margin-top: 0.5rem;
+            font-size: 0.85rem;
+            background-color: rgba(245, 158, 11, 0.1);
+            border-left: 3px solid var(--highlight);
+            padding: 0.5rem 0.75rem;
+            border-radius: 0.25rem;
+            color: #fbbf24;
+        }
+
+        .input-area {
+            background-color: var(--surface-color);
+            padding: 1.5rem 2rem;
+            border-top: 1px solid var(--border-color);
+            display: flex;
+            gap: 1rem;
+        }
+
+        input {
+            flex: 1;
+            background-color: var(--bg-color);
+            border: 1px solid var(--border-color);
+            color: var(--text-color);
+            padding: 0.875rem 1rem;
+            border-radius: 0.5rem;
+            font-size: 1rem;
+            font-family: inherit;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        input:focus {
+            border-color: var(--primary-color);
+        }
+
+        button {
+            background-color: var(--primary-color);
+            color: white;
+            border: none;
+            padding: 0 1.5rem;
+            border-radius: 0.5rem;
+            font-weight: 600;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: background-color 0.2s, transform 0.1s;
+        }
+
+        button:hover {
+            background-color: var(--primary-hover);
+        }
+
+        button:active {
+            transform: scale(0.98);
+        }
+
+        button:disabled {
+            background-color: var(--bot-bg);
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .typing-indicator {
+            display: none;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 1rem;
+            background-color: var(--bot-bg);
+            border-radius: 0.75rem;
+            border-bottom-left-radius: 0.25rem;
+            width: fit-content;
+        }
+
+        .dot {
+            width: 8px;
+            height: 8px;
+            background-color: var(--text-muted);
+            border-radius: 50%;
+            animation: bounce 1.4s infinite ease-in-out both;
+        }
+
+        .dot:nth-child(1) { animation-delay: -0.32s; }
+        .dot:nth-child(2) { animation-delay: -0.16s; }
+
+        @keyframes bounce {
+            0%, 80%, 100% { transform: scale(0); }
+            40% { transform: scale(1); }
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Simple markdown-like formatting */
+        .message-content pre {
+            background-color: var(--bg-color);
+            padding: 1rem;
+            border-radius: 0.5rem;
+            overflow-x: auto;
+            margin: 0.5rem 0;
+        }
+        
+        .message-content code {
+            font-family: monospace;
+            background-color: rgba(0,0,0,0.2);
+            padding: 0.2rem 0.4rem;
+            border-radius: 0.25rem;
+        }
+
+        .message-content pre code {
+            background-color: transparent;
+            padding: 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="header-title">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--primary-color)"><path d="M12 2a2 2 0 0 1 2 2c0 .74-.4 1.39-1 1.73V7h1a7 7 0 0 1 7 7h1a2 2 0 0 1 2 2v2a2 2 0 0 1-2 2h-1v1a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-1H2a2 2 0 0 1-2-2v-2a2 2 0 0 1 2-2h1a7 7 0 0 1 7-7h1V5.73A2 2 0 0 1 12 2Z"></path><path d="M2 14h2"></path><path d="M20 14h2"></path><path d="M15 14v.01"></path><path d="M9 14v.01"></path></svg>
+            <span>Neuro</span>Stream Agent
+        </div>
+        <div style="font-size: 0.875rem; color: var(--text-muted);">
+            Powered by Gemini & NeuroStream Network
+        </div>
+    </div>
+
+    <div class="chat-container" id="chatContainer">
+        <div class="message bot">
+            <div class="message-content">
+                Hello! I am your NeuroStream AI Agent. I can help you search for information on-chain or use the NeuroStream service. How can I assist you today?
+            </div>
+            <div class="message-meta">System</div>
+        </div>
+        <div class="typing-indicator" id="typingIndicator">
+            <div class="dot"></div>
+            <div class="dot"></div>
+            <div class="dot"></div>
+        </div>
+    </div>
+
+    <form class="input-area" id="chatForm">
+        <input type="text" id="messageInput" placeholder="Type a message..." autocomplete="off" required>
+        <button type="submit" id="sendBtn">Send</button>
+    </form>
+
+    <script>
+        const chatForm = document.getElementById('chatForm');
+        const messageInput = document.getElementById('messageInput');
+        const chatContainer = document.getElementById('chatContainer');
+        const sendBtn = document.getElementById('sendBtn');
+        const typingIndicator = document.getElementById('typingIndicator');
+
+        // Simple markdown parser for basic formatting
+        function parseMarkdown(text) {
+            let html = text
+                .replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>') // code blocks
+                .replace(/`([^`]+)`/g, '<code>$1</code>') // inline code
+                .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>') // bold
+                .replace(/\*(.*?)\*/g, '<em>$1</em>') // italic
+                .replace(/\n/g, '<br>'); // newlines
+            return html;
+        }
+
+        function addMessage(content, isUser, toolCalls = []) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${isUser ? 'user' : 'bot'}`;
+            
+            let html = `<div class="message-content">${isUser ? content : parseMarkdown(content)}`;
+            
+            // Add tool call indicators if present
+            if (toolCalls && toolCalls.length > 0) {
+                toolCalls.forEach(call => {
+                    html += `<div class="tool-call">
+                        <strong>⚡ NeuroStream Call:</strong> ${call.keyword || 'auto'}
+                    </div>`;
+                });
+            }
+            
+            html += `</div>
+                <div class="message-meta">${isUser ? 'You' : 'Agent'} • ${new Date().toLocaleTimeString()}</div>`;
+            
+            messageDiv.innerHTML = html;
+            
+            // Insert before typing indicator
+            chatContainer.insertBefore(messageDiv, typingIndicator);
+            scrollToBottom();
+        }
+
+        function scrollToBottom() {
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
+
+        function setTyping(isTyping) {
+            typingIndicator.style.display = isTyping ? 'flex' : 'none';
+            messageInput.disabled = isTyping;
+            sendBtn.disabled = isTyping;
+            if (isTyping) {
+                scrollToBottom();
+            } else {
+                messageInput.focus();
+            }
+        }
+
+        chatForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const message = messageInput.value.trim();
+            if (!message) return;
+
+            addMessage(message, true);
+            messageInput.value = '';
+            setTyping(true);
+
+            try {
+                const response = await fetch('/api/chat', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ message })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    addMessage(data.reply, false, data.toolCalls);
+                } else {
+                    addMessage(`Error: ${data.error}`, false);
+                }
+            } catch (error) {
+                addMessage('Network error. Failed to reach the server.', false);
+            } finally {
+                setTyping(false);
+            }
+        });
+
+        // Initial focus
+        messageInput.focus();
+    </script>
+</body>
+</html>

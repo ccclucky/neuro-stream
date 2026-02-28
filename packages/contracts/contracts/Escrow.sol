@@ -143,7 +143,6 @@ contract Escrow {
         Payment storage payment = payments[requestId];
 
         if (payment.status != Status.Locked) revert PaymentNotLocked();
-        if (msg.sender != payment.provider) revert NotProvider();
         if (block.timestamp > payment.deadline) revert DeadlinePassed();
         if (keccak256(abi.encodePacked(preimage)) != payment.hashLock) revert InvalidPreimage();
 

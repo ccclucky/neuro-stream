@@ -25,6 +25,11 @@ export const appChain = defineChain({
   testnet: targetChainId !== 1,
 });
 
+export const explorerUrl = appChain.blockExplorers?.default?.url || '';
+export function txUrl(hash: string): string {
+  return explorerUrl ? `${explorerUrl}/tx/${hash}` : '';
+}
+
 export const ERC20_ABI = [
   {
     name: 'balanceOf',

@@ -4,6 +4,7 @@ import { usePrivy, useSignMessage } from '@privy-io/react-auth';
 import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { isSupabaseConfigured, supabaseFetch, supabaseUrl, supabaseKey } from '@/lib/supabase';
+import { txUrl } from '@/lib/constants';
 import { useEmbeddedWallet } from '@/lib/useEmbeddedWallet';
 
 interface Payment {
@@ -499,6 +500,9 @@ const { result: r2 } = await client.callService({
                   <th className="text-left py-3 pr-4 text-xs font-medium text-gray-500 uppercase">
                     Status
                   </th>
+                  <th className="text-left py-3 pr-4 text-xs font-medium text-gray-500 uppercase">
+                    Tx
+                  </th>
                   <th className="text-left py-3 text-xs font-medium text-gray-500 uppercase">
                     Time
                   </th>
@@ -537,6 +541,20 @@ const { result: r2 } = await client.callService({
                         </svg>
                         {statusConfig[p.status]?.label}
                       </span>
+                    </td>
+                    <td className="py-4 pr-4">
+                      {p.tx_hash ? (
+                        <a
+                          href={txUrl(p.tx_hash)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs font-mono text-gray-500 hover:text-gray-900 underline underline-offset-2"
+                        >
+                          {shortenHex(p.tx_hash)}
+                        </a>
+                      ) : (
+                        <span className="text-xs text-gray-400">—</span>
+                      )}
                     </td>
                     <td className="py-4 text-xs text-gray-500">
                       {new Date(p.created_at).toLocaleString()}

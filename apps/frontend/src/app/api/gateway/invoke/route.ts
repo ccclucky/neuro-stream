@@ -59,7 +59,7 @@ export async function POST(req: NextRequest) {
               requestId: existing.request_id,
               hashLock: existing.hash_lock,
               amount: existing.amount,
-              recipient: existing.gateway_address,
+              recipient: existing.provider_wallet || existing.gateway_address,
               deadline: existing.deadline,
               status: existing.status,
             },
@@ -82,6 +82,7 @@ export async function POST(req: NextRequest) {
       const decimals = parseInt(process.env.PAYMENT_TOKEN_DECIMALS || '6', 10);
       const amount = parseUnits(service.pricingAmount, decimals).toString();
       const gatewayAddress = getGatewayAddress();
+      const providerWallet = service.recipient; // Provider's embedded wallet address
 
       // ④ Write DB: status=CREATED
       await createChallenge({
@@ -91,6 +92,7 @@ export async function POST(req: NextRequest) {
         service_id: serviceId,
         provider_endpoint: service.endpoint,
         gateway_address: gatewayAddress,
+        provider_wallet: providerWallet,
         preimage,
         hash_lock: hashLock,
         amount,
@@ -98,13 +100,13 @@ export async function POST(req: NextRequest) {
         status: 'CREATED',
       });
 
-      // Return 402 challenge
+      // Return 402 challenge — recipient is the Provider's wallet (not Gateway)
       return NextResponse.json(
         {
           requestId: reqId,
           hashLock,
           amount,
-          recipient: gatewayAddress,
+          recipient: providerWallet,
           deadline,
         },
         { status: 402 }
@@ -138,7 +140,11 @@ export async function POST(req: NextRequest) {
 
     // ⑤ Verify on-chain escrow is locked
     if (challenge.status === 'CREATED') {
-      const isLocked = await verifyEscrowLocked(requestId as `0x${string}`);
+      const expectedProvider = challenge.provider_wallet || challenge.gateway_address;
+      const isLocked = await verifyEscrowLocked(
+        requestId as `0x${string}`,
+        expectedProvider,
+      );
       if (!isLocked) {
         return NextResponse.json(
           { error: 'Escrow not yet locked on-chain', requestId },

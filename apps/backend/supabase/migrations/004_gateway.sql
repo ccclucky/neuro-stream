@@ -11,6 +11,7 @@ CREATE TABLE gateway_challenges (
     service_id       TEXT NOT NULL,              -- Service ID
     provider_endpoint TEXT NOT NULL,             -- Provider HTTP endpoint (snapshot)
     gateway_address  TEXT NOT NULL,              -- Gateway wallet address (escrow recipient)
+    provider_wallet  TEXT,                       -- Provider embedded wallet (claim funds go here)
 
     -- Crypto material
     preimage         TEXT NOT NULL,              -- 0x... 32 bytes

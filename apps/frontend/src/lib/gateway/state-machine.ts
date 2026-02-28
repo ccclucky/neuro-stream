@@ -29,6 +29,7 @@ export interface GatewayChallenge {
   service_id: string;
   provider_endpoint: string;
   gateway_address: string;
+  provider_wallet: string | null;
   preimage: string;
   hash_lock: string;
   amount: string;
@@ -226,9 +227,13 @@ function getGatewayClients() {
 
 /**
  * Verify that the escrow is locked on-chain for the given requestId.
- * Returns true if status == Locked(1).
+ * If expectedProvider is given, also verify the on-chain provider matches.
+ * Returns true if status == Locked(1) and provider matches (when checked).
  */
-export async function verifyEscrowLocked(requestId: `0x${string}`): Promise<boolean> {
+export async function verifyEscrowLocked(
+  requestId: `0x${string}`,
+  expectedProvider?: string,
+): Promise<boolean> {
   const { publicClient, escrowAddress } = getGatewayClients();
   try {
     const payment = await publicClient.readContract({
@@ -237,7 +242,11 @@ export async function verifyEscrowLocked(requestId: `0x${string}`): Promise<bool
       functionName: 'getPayment',
       args: [requestId],
     });
-    return payment.status === 1; // Locked
+    if (payment.status !== 1) return false; // Not Locked
+    if (expectedProvider && payment.provider.toLowerCase() !== expectedProvider.toLowerCase()) {
+      return false;
+    }
+    return true;
   } catch {
     return false;
   }
