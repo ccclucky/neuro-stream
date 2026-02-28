@@ -12,6 +12,7 @@
     "demo:agent": "dotenv -c development -- tsx scripts/demo-agent.ts",
     "db:migrate": "dotenv -c development -- tsx scripts/db-migrate.ts",
     "db:reset": "dotenv -c development -- tsx scripts/db-reset.ts",
+    "db:reset:prod": "dotenv -c production -- tsx scripts/db-reset.ts",
     "db:seed": "dotenv -c development -- tsx scripts/db-seed.ts",
     "deploy:local": "dotenv -c development -- pnpm --filter @neurostream/contracts deploy:local",
     "deploy:monad:testnet": "dotenv -c production -- pnpm --filter @neurostream/contracts deploy:monad",
