@@ -297,7 +297,7 @@ export async function lookupService(serviceId: string): Promise<ServiceInfo | nu
   return {
     serviceId: row.service_id as string,
     endpoint: row.endpoint as string,
-    pricingAmount: (row.pricing_amount as string) || '0.001',
+    pricingAmount: (row.pricing_amount as string) || '2.00',
     recipient: row.recipient as string,
   };
 }

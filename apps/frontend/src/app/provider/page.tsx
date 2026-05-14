@@ -55,7 +55,7 @@ export default function ProviderPage() {
     serviceId: '',
     serviceType: 'utility',
     endpoint: '',
-    pricingAmount: '0.001',
+    pricingAmount: '2.00',
   });
 
   const [myServices, setMyServices] = useState<Service[]>([]);
